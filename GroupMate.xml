@@ -1,0 +1,2431 @@
+ <?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- GroupMate for Verbal Assistance while in a group, by Reva -->
+<!-- Type "gm name <name>" to set your name stored by the plugin -->
+<!-- Type "gm help" for the helpfile -->
+<!-- Note:  In Mushclient, check File->World Properties->General->Timers, tick "Enable Timers" at bottom. -->
+
+<!-- NOTE: You must have luacom.dll file in the same folder as MUSHclient.exe for the speech to work  -->
+<!-- Download at: ?????????????????????????????  -->
+
+<muclient>
+<plugin
+   name="GroupMate"
+   author="Reva"
+   id="aede2344e0149ea429c562c4"
+   language="Lua"
+   purpose="Group Assistant"
+   date_written="2018-01-27"
+   date_modified="2018-01-27"
+   save_state="y"
+   requires="4.84"
+   version="0.5"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+  <!-- Alias to note room info -->
+  <alias
+   match="^stamp(?: (?P<name>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   send_to="12"
+   script="NoteRoomInfo"
+  > 
+  </alias>
+  <alias
+   match="^log(?: (?P<spot>\w+))?(?: (?P<city>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   send_to="12"
+   script="StartLog"
+  > 
+  </alias>
+  <!-- Alias to manually switch names -->
+  <alias
+   match="^gm ?name (\w+)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   send_to="12"
+  > 
+  <send>
+  if "%1" ~= nil then
+	sMyName = string.lower("%1")
+    ColourNote("chartreuse", "black", "GroupMate: Name for GroupMate is '"..string.upper(sMyName).."'.")
+	for i, v in ipairs (sCharNames) do
+		if string.lower(v) == string.lower(sMyName) then return end
+	end
+  end
+  table.insert(sCharNames, string.lower(sMyName))
+  </send>
+  </alias>
+  <!-- Alias to list fumbled items -->
+  <alias
+   match="^fumbles?(?: (?P<item>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ListFumbledItems"
+   name="ListFumbledItems"
+  > 
+  </alias>
+  <alias
+   match="^gfumbles?(?: (?P<item>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ListFumbledItems"
+   name="GroupListFumbledItems"
+  > 
+  </alias>
+  <!-- Alias to list fallen floaters -->
+  <alias
+   match="^floaters?(?: (?P<item>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ListFallenFloaters"
+   name="ListFallenFloaters"
+  > 
+  </alias>
+  <alias
+   match="^gfloaters?(?: (?P<item>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ListFallenFloaters"
+   name="GroupListFallenFloaters"
+  > 
+  </alias>
+  <!-- Alias to list snatched items -->
+  <alias
+   match="^(?!snatch .+ from .+ leaving .+)snatch(?:es)?(?: (?P<item>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ListSnatchedItems"
+   name="ListSnatchedItems"
+  > 
+  </alias>
+  <alias
+   match="^gsnatch(?:es)?(?: (?P<item>.+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ListSnatchedItems"
+   name="GroupSnatchedFumbledItems"
+  > 
+  </alias>
+  <alias
+   match="^gstats$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="DisplayGroupStats"
+   name="ListGroupStats"
+  > 
+  </alias>
+  <alias
+   match="^ggstats$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="DisplayGroupStats"
+   name="GroupListGroupStats"
+  > 
+  </alias>
+  <alias
+   match="^gtalk (.*)"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   name="GroupTalkSpeak"
+   script="GroupTalk"
+  > 
+  </alias>
+
+  <alias
+   script="gmcpdebug"
+   match="^gmcpdebug (.*)?$"
+   enabled="y"
+   regexp="y"
+   sequence="100"
+   ignore_case="y"
+></alias>
+
+</aliases>
+<script>
+<![CDATA[
+
+sMyName = string.lower("Unknown")
+sCharNames = {}
+table.insert(sCharNames, string.lower(sMyName))
+
+
+-------------------------------
+-- Settings For Idle Warning --
+-------------------------------
+--Time elapsed to warn after, max 5 mins 0 secs (If more it will default to 4 mins)
+MinsToWarn = 4
+SecsToWarn = 0
+--Edit to .wav file to play on warnings
+--For soundfiles in /sounds folder leave filepath blank, otherwise enter full filepath using frontslashes 
+--(e.g. c:/user/sounds/ding-dong\.wav\)\.")
+SoundFile = "ding-dong.wav" 
+--Set to false if you do not want text warnings as well
+bTextWarning = true
+--Set to true if you want talking messages, must have luacom.dll in same folder as MUSHclient.exe to work
+bTalk = true
+-------------------------------
+
+iTotalSecondsToWarn = (MinsToWarn * 60) + (SecsToWarn)
+if iTotalSecondsToWarn < 1 then
+	ColourNote("red", "black", "IdleWarning Error: Time must be at least 1 second, defaulting to 4 minutes.")
+	MinsToWarn = 4
+	SecsToWarn = 0
+	iTotalSecondsToWarn = (MinsToWarn * 60) + (SecsToWarn)
+elseif iTotalSecondsToWarn >= 300 then
+	ColourNote("red", "black", "IdleWarning Error: Time must less than 5 minutes, defaulting to 4 minutes.")
+	MinsToWarn = 4
+	SecsToWarn = 0
+	iTotalSecondsToWarn = (MinsToWarn * 60) + (SecsToWarn)
+end
+
+function OnPluginInstall()--Here is our timer
+	AddTimer ("AssistIdleOut", 0, MinsToWarn, SecsToWarn, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "IdleOutWarning")
+end
+
+GroupMates = {}
+LeadingStats = {}
+
+--Used to determine when leaving a warning spot 
+RoomsAway = 0
+
+function OnPluginConnect()
+	EnableAlias("LogonNameCapture", true)
+end
+
+function OnPluginCommand (command)
+	--Add here commands it should ignore
+	if command == "comms" then return true end
+		AddTimer ("AssistIdleOut", 0, MinsToWarn, SecsToWarn, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "IdleOutWarning")
+	return true -- process this command
+end -- OnPluginCommand
+
+function OnPluginEnable()
+	AddTimer ("AssistIdleOut", 0, MinsToWarn, SecsToWarn, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "IdleOutWarning")
+--  ColourNote("chartreuse", "black", "[" .. os.date ("%I:%M:%S %p") .."]: IdleTimer Reset ")
+end
+
+
+function IdleOutWarning(sName)
+	local iSecsLeft = 300 - iTotalSecondsToWarn
+	local iMinsLeft = math.floor(iSecsLeft/60)
+	iSecsLeft = iSecsLeft - math.floor(iMinsLeft * 60)
+
+	local sTimeLeft = ""
+	local sIdleMessage = "Idle warning: "
+	if iMinsLeft > 0 then
+		sTimeLeft = iMinsLeft .. "m"
+		sIdleMessage = sIdleMessage .. iMinsLeft .. " minute"
+		if iMinsLeft > 1 then
+			sIdleMessage = sIdleMessage .. "s"
+		end
+	end
+	if iSecsLeft > 0 then
+		if sTimeLeft ~= "" then sTimeLeft = sTimeLeft .. " " end
+		sTimeLeft = sTimeLeft .. iSecsLeft .. "s"
+		sIdleMessage = sIdleMessage .. " " .. iSecsLeft .. " second"
+		if iSecsLeft > 1 then
+			sIdleMessage = sIdleMessage .. "s"
+		end
+	end
+	
+	local sTimeIdle = ""
+	if MinsToWarn > 0 then
+		sTimeIdle = MinsToWarn .. "m"
+	end
+	if SecsToWarn > 0 then
+		if sTimeIdle ~= "" then sTimeIdle = sTimeIdle .. " " end
+		sTimeIdle = sTimeIdle .. SecsToWarn .. "s"
+	end
+
+	if bTextWarning == true then
+		ColourNote ("chartreuse", "black", "IdleWarning: ".. sTimeIdle .. " idle, " .. sTimeLeft .. " to idle out from assist.")
+	end
+
+	if bTalk == true then
+		talk:Speak(sIdleMessage .. " remaining.", 1)
+	else
+		iErrorSound = PlaySound (0, SoundFile, false, 0, 0)
+		if iErrorSound == 30051 then
+			Note("Error playing sound: " .. SoundFile .. " not found. For soundfiles in /sounds folder leave filepath blank, otherwise enter full filepath using frontslashes (e.g. c:/user/sounds/ding-dong\.wav\)\.")
+		elseif iErrorSound ~= 0 then
+			Note("Error playing sound: " .. iErrorSound .. "\.")
+		end
+	end
+end
+
+--As Relion dies, your mind reels in panic, storing every last detail of their existence in an orgy of denial.  Perhaps a priest can help you to recover your lost love?
+--Handle messages about pet death
+function PetDeathNotify (sName, sLine, wildcards)
+	local sayName = wildcards.petname
+	ColourNote ("red", "black", "GroupMate: " .. sayName .. " - dead!")
+	talk:Speak ("Pet " .. sayName .. " dead!", 1)
+end
+
+
+--Handle messages about shield changes
+function ShieldNotify (sName, sLine, wildcards)
+--Note(sName)
+sType, sChange, sArg, sNumber = string.match(sName, "(%a+)_(%a+)_(%a+)(%d*)$")
+--Note("sType: " .. sType.. ", sChange: " ..sChange..", sArg: ".. sArg)
+--[[
+if sNumber ~= nil and sNumber ~= "" then
+	Note("sNumber: " , sNumber)
+end
+]]--
+
+	if sType == "MS" then
+		sType = "Major Shield"
+	end
+--Don't think we need this check anymore
+--	if sChange == "Down" or sChange == "Up" then
+		ColourNote ("red", "black", "GroupMate: " .. sType .. " - " .. sChange .. "!")
+		sType = Spacify(sType)
+		talk:Speak (sType .. ", " .. sChange, 1)
+--		ColourNote("chartreuse", "black", "[" .. os.date ("%I:%M:%S %p") .."]")
+--	end
+	--[[
+	
+	elseif sType == "Bugs" then
+	elseif sType == "EFF" then
+	elseif sType == "
+	end]]--
+end
+
+--Add spaces where necessary for talking
+function Spacify (sArg)
+	if sArg == "EFF" then
+		return "E F F"
+	else 
+		return sArg
+	end
+end
+
+-- Check if the user has timers setting enabled or not
+if (GetCurrentValue("enable_timers") ~= 1) then
+  Note("")
+  ColourNote("red", "black", "GroupMate: Your timers in Mushclient are disabled!")
+  Note("This means none of the timers needed for this plugin to work can run.")
+  Note("To enable timers, in Mushclient menus go to File->World Properties->General->Timers, tick 'Enable Timers' on this page, then click 'OK'")
+  Note("")
+end
+
+function DisplayGroupStats (sName, sLine, wildcards)
+--	table.insert(GroupStats, {WasLeader,GainedXP,LeadingTime})
+	for i, v in ipairs (GroupStats) do
+		Leader      = v[1]
+		GainedXP    = v[2]
+		LeadingTime = v[3]
+		DisplayGainedXP = Kify(GainedXP)
+		DisplayLeadingTime = TimeFormat(LeadingTime)
+		DisplayXPRate = Kify(XPRate)
+		XPRate = (GainedXP / LeadingTime) * 3600
+		if sLine == "gstats" then 
+			ColourNote("deeppink", "", "Leader '"..Leader.."': "..DisplayGainedXP .."xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "xp/hr\)")
+		elseif sLine == "ggstats" then
+			Send("group say Leader '"..Leader.."': "..DisplayGainedXP .."xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "xp/hr\)")
+		end			
+	end
+	
+end
+
+GroupStats = {}
+function LeaderChange(sName, sLine, wildcards)
+	GMNote(wildcards.newleader .. " appointed leader of '" .. wildcards.groupname .. "'." )
+	talk:Speak(wildcards.newleader .. "appointed leader", 1)
+	
+	GainedXP = 0
+	LeadingTime = 0
+	XPRate = 0
+	WasLeader = "Unknown"
+	
+	--figure out previous leader stats if they are available
+	if LeadingStats.leader ~= nil then
+		WasLeader = LeadingStats.leader
+	elseif wildcards.oldleader ~= nil then 
+		WasLeader = wildcards.oldleader
+	end
+	if LeadingStats.xp ~= nil and CharVitals.xp ~= nil then GainedXP = tonumber(CharVitals.xp) - tonumber(LeadingStats.xp) end
+	if LeadingStats.start ~= nil then LeadingTime = os.difftime (os.time (), LeadingStats.start)  end
+	
+	--iMins = math.floor(LeadingTime / 60)
+	--Note("1")
+	if LeadingTime > 0 then XPRate = (GainedXP / LeadingTime) * 3600 end
+	--Note("2")
+	--Note("XPRate: ".. XPRate)
+	DisplayGainedXP = Kify(GainedXP)
+	DisplayLeadingTime = TimeFormat(LeadingTime)
+	DisplayXPRate = Kify(XPRate)
+
+	if LeadingTime ~= 0 then
+		ColourNote("deeppink", "", "Leader '"..WasLeader.."': "..DisplayGainedXP .."xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "xp/hr\)")
+	end
+	table.insert(GroupStats, {WasLeader,GainedXP,LeadingTime})
+
+	if CheckGroupmates(wildcards.oldleader) == false then
+		AddGroupmate(wildcards.oldleader)
+	end
+	if CheckGroupmates(wildcards.newleader) == false then
+		AddGroupmate(wildcards.newleader)
+	end
+	GroupMates["leader"] = wildcards.newleader
+	LeadingStats["leader"]= wildcards.newleader
+	LeadingStats["start"] = os.time()
+	if CharVitals.xp ~= nil then
+		LeadingStats["xp"] = CharVitals.xp
+	else 
+		LeadingStats["xp"] = nil
+	end
+	
+end
+
+function GroupLeaderLeft(sName, sLine, wildcards)
+	GMNote("Leader left group." )
+	talk:Speak("Leader left group.", 1)
+	
+	GainedXP = 0
+	LeadingTime = 0
+	XPRate = 0
+	WasLeader = "Unknown"
+	
+	--figure out previous leader stats if they are available
+	if LeadingStats.leader ~= nil then
+		WasLeader = LeadingStats.leader
+	end
+	if LeadingStats.xp ~= nil and CharVitals.xp ~= nil then GainedXP = tonumber(CharVitals.xp) - tonumber(LeadingStats.xp) end
+	if LeadingStats.start ~= nil then LeadingTime = os.difftime (os.time (), LeadingStats.start)  end
+	
+	--iMins = math.floor(LeadingTime / 60)
+	--Note("1")
+	if LeadingTime > 0 then XPRate = (GainedXP / LeadingTime) * 3600 end
+	--Note("2")
+	--Note("XPRate: ".. XPRate)
+	DisplayGainedXP = Kify(GainedXP)
+	DisplayLeadingTime = TimeFormat(LeadingTime)
+	DisplayXPRate = Kify(XPRate)
+
+	if LeadingTime ~= 0 then
+		ColourNote("deeppink", "", "Leader '"..WasLeader.."': "..DisplayGainedXP .."xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "xp/hr\)")
+	end
+	table.insert(GroupStats, {WasLeader,GainedXP,LeadingTime})
+
+	GroupMates["leader"] = "Unknown"
+	LeadingStats["leader"]= "Unknown"
+	LeadingStats["start"] = os.time()
+	if CharVitals.xp ~= nil then
+		LeadingStats["xp"] = CharVitals.xp
+	else 
+		LeadingStats["xp"] = nil
+	end	
+end
+
+function GroupJoin(sName, sLine, wildcards)
+	GMNote("Joined group.")
+	LeadingStats["start"] = os.time()
+	if CharVitals.xp ~= nil then
+		LeadingStats["xp"] = CharVitals.xp
+	else 
+		LeadingStats["xp"] = nil
+	end
+	
+end
+
+function TimeFormat(nNum)
+    iSeconds = nNum
+	iDay = math.floor(iSeconds / (86400))
+    iHour = math.floor( (iSeconds - (iDay * 86400))/ 3600)
+	iMinute = math.floor( (iSeconds - (iDay * 86400) - (iHour * 3600)) / 60 )
+    iSecond = math.floor( iSeconds - (iDay * 86400) - (iHour * 3600) - (iMinute * 60) )
+	sString = ""
+	if iDay == 0 and iHour == 0 and iMinute == 0 and iSecond == 0 then sString = nNum .. "s" end
+	if iDay > 0 then sString = iDay .. "d" end
+	if iHour > 0 then 
+		if sString ~= "" then sString = sString .. " " end
+		sString = sString .. iHour .. "h" 
+	end
+	if iMinute > 0 then 
+		if sString ~= "" then sString = sString .. " " end
+		sString = sString .. iMinute .. "m"
+	end
+	if iSecond > 0 then
+		if sString ~= "" then sString = sString .. " " end
+		sString = sString .. iSecond .. "s"
+	end
+	--Note(sString)
+	return sString
+end
+
+--Shorten number to reflect m\k
+function Kify(nNum)
+	nMil = math.floor(nNum / 1000000)
+	nHunThou = math.floor( (nNum - (nMil * 1000000)) / 100000)
+	nTenThou = math.floor( (nNum - (nMil * 1000000) - (nHunThou * 100000)) / 10000)
+	nThou = math.floor( (nNum - (nMil * 1000000) - (nHunThou * 100000) - (nTenThou * 10000)) / 1000)
+	nHun = math.floor( (nNum - (nMil * 1000000) - (nHunThou * 100000) - (nTenThou * 10000) - (nThou * 1000)) / 100)
+--[[
+	Note("Mil    :"..nMil)
+	Note("HunThou:"..nHunThou)
+	Note("TenThou:"..nTenThou)
+	Note("Thou   :"..nThou)
+	Note("Hun    :"..nHun)
+	]]--
+	sString = nNum
+	if nMil > 0 then
+		if nMil >= 100 then
+			sString = nMil .. "m"
+		elseif nMil >= 10 then
+			if nHunThou > 0 then
+				sString = nMil .. "." .. nHunThou .. "m"
+			end
+		else
+			if nTenThou > 0 then
+				sString = nMil .. "." .. nHunThou .. nTenThou .. "m"
+			end
+		end
+	elseif nHunThou > 0 then
+		sString = nHunThou .. nTenThou .. nThou .. "k"
+	elseif nTenThou > 0 then
+		if nHun > 0 then
+			sString = nTenThou .. nThou .. "." .. nHun .. "k"
+		else
+			sString = nTenThou .. nThou .. "k"
+		end
+	elseif nThou > 0 then
+		if nHun > 0 then
+			sString = nThou .. "." .. nHun .. "k"
+		else
+			sString = nThou .. "k"
+		end
+	end
+	return sString
+end
+
+function Test(arg)
+	result = Kify(arg)
+	TimeFormat(arg)
+	Note("Result: " .. result)
+end
+
+function AssistStart(sName, sLine, wildcards)
+	ColourNote("chartreuse", "black", "GroupMate: " .. wildcards.groupmate .. " assists " .. wildcards.groupmate2 .. "." )
+	talk:Speak(wildcards.groupmate .. " assists " .. wildcards.groupmate2, 1)
+	if CheckGroupmates(wildcards.groupmate) == false then
+		AddGroupmate(wildcards.groupmate)
+	end
+	if CheckGroupmates(wildcards.groupmate2) == false then
+		AddGroupmate(wildcards.groupmate2)
+	end
+end
+
+function AssistStop(sName, sLine, wildcards)
+	ColourNote("chartreuse", "black", "GroupMate: " .. wildcards.groupmate .. " stops assisting " .. wildcards.groupmate2 .. "." )
+	talk:Speak(wildcards.groupmate .. " stops assisting " .. wildcards.groupmate2, 1)
+end
+
+function AddGroupmate(sName)
+	if CheckGroupmates(sName) == false then
+		table.insert(GroupMates, sName)
+	else
+		GMNote(sName .. " already in group.")
+	end
+	if #GroupMates > 7 then
+		GMNote(#GroupMates .. " members in group!")
+	end
+end
+
+function RemoveGroupmate(sName)
+	if CheckGroupmates(sName) == true then
+		--Done like this to catch even differences in capitalizations
+		for i, v in ipairs (GroupMates) do
+			if string.lower(v) == string.lower(sName) then
+				GMNote("'"..sName.."' removed from GroupMates.")
+				v = nil
+				if string.lower(GroupMates.leader) == string.lower(sName) then
+					GroupMates.leader = nil
+					GMNote("'"..sName.."' removed from groupleader.")
+				end
+			end
+		end
+	else
+		GMNote("'"..sName.."' not in group.")	
+	end
+end
+
+function CheckGroupmates(sName)
+	for i, v in ipairs (GroupMates) do
+		if string.lower(v) == string.lower(sName) then
+			return true
+		end
+	end
+	return false
+end
+
+function ListGroupmates()
+	GMNote("LISTING GROUPMATES:")
+	if GroupMates.leader ~= nil then
+		GMNote("Leader: " .. GroupMates.leader)
+	end
+	for i, v in ipairs (GroupMates) do
+		GMNote(i.."\) "..v)
+	end
+end
+
+function CountCorpses (sName, sLine, wildcards)
+end
+
+-- Check if the user has aliases enabled or not
+if (GetCurrentValue("enable_aliases") ~= 1) then
+  Note("")
+  ColourNote("chartreuse", "black", "GroupMate: Your aliases in Mushclient are disabled!")
+  Note("This means you will not be able to use the commands added by the plugin.")
+  Note("To enable aliases, in Mushclient menus go to File->World Properties->Input->Aliases, tick 'Enable Aliases' on this page, then click 'OK'")
+  Note("")
+end
+
+--Add Text to Speech
+if not talk then
+	assert (package.loadlib ("luacom.dll","luacom_open")) ()
+	talk = assert (luacom.CreateObject ("SAPI.SpVoice"), "cannot open SAPI")
+end -- no talk yet
+
+--Lets start with the idle timer
+AddTimer ("AssistIdleOut", 0, MinsToWarn, SecsToWarn, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "IdleOutWarning")
+
+
+function NewLogon (sName, sLine, wildcards)
+--Note("NewLogon")
+  EnableAlias("LogonNameCapture", true)
+end
+
+require "tprint"
+
+function GroupChat (sName, sLine, wildcards, styles)
+--Yellow = 65535
+--styles[5] is th eone that changes
+--FFFE00
+--alias gtalk group say %%^^#FFFE00%%^^$*$
+--[[
+if styles[5] ~= nil then
+	Note(styles[5]["textcolour"])
+end
+tprint(styles)
+]]--
+	if styles[5] ~= nil and styles[5].textcolour == 65279 then
+		talk:Speak(wildcards.groupmate .. " groupsays: " .. wildcards.chat, 1)
+	end
+end
+
+function LogonTalk (sName, sLine, wildcards)
+    ColourNote("chartreuse", "", wildcards.name .. " " .. wildcards.dir .. " Discworld!")
+	talk:Speak(wildcards.name .. " " .. wildcards.dir .. " Discworld!", 1)
+end
+
+function GiantThrow (sName, sLine, wildcards)
+  talk:Speak("Thrown by giant.", 1)
+  GMNote("Thrown by giant.")
+end
+
+function YoYou (sName, sLine, wildcards)
+  talk:Speak(wildcards.groupmate .. " groupsays: yo reva", 1)
+end
+
+function GroupTalk (sName, sLine, wildcards)
+  SendNoEcho("group say %%^^#FFFE00%%^^" .. wildcards[1] .. "%%^^WHITE%%^^%%^^RESET%%^^")
+  ColourNote("white", "", "group say " .. wildcards[1])
+end
+
+--[[
+You lead Enter:
+You go through the mysterious stone door.
+You start to swim.
+Sense Deca starts to swim.
+Sense Deca emerges from a thaumic door which appears in midair.
+TaleS starts to swim.
+TaleS emerges from a thaumic door which appears in midair.
+Sense Deca and TaleS precede you.
+
+Other lead enter: 
+You follow Sense Deca through the mysterious stone door.
+TaleS and Valkyr D'Monic emerge from a thaumic door which appears in midair.
+The courtyard to the temple of Offler - the Six-armed Crocodile God of Klatch [n,e,s,w].
+Valkyr D'Monic, TaleS, Sense Deca, a lithe priest and a crazy priest are standing here.
+A collection of lanterns is hanging from iron poles about the courtyard.
+Sense Deca wades into the pond.
+You wade into the pond.
+You start to swim.
+You follow Sense Deca enter pond.
+TaleS starts to swim.
+TaleS wades into the pond.
+Valkyr D'Monic starts to swim.
+Valkyr D'Monic wades into the pond.
+On the surface of a large pond [out].
+
+Leave:
+You wade out of the pond.
+Sense Deca swims in from inside.
+Sense Deca stands up.
+TaleS swims in from inside.
+TaleS stands up.
+Sense Deca and TaleS precede you.
+
+Other leave:
+Sense Deca wades out of the pond.
+You wade out of the pond.
+You follow Sense Deca out.
+You stand up.
+TaleS swims in from inside.
+TaleS stands up.
+Valkyr D'Monic swims in from inside.
+Valkyr D'Monic stands up.
+The courtyard to the temple of Offler - the Six-armed Crocodile God of Klatch [n,e,s,w].
+
+]]--
+function EnterCrocs (sName, sLine, wildcards, styles)
+	if styles[1].text ~= RoomDesc then
+		InSpot = "crocs"
+		RoomDesc = styles[1].text
+		EnterSpot(InSpot)
+		EnableTrigger("CountCrocs", true)
+--		Note("RoomDesc: " .. RoomDesc)
+	end
+end
+
+function CountCrocs(sName, sLine, wildcards)
+	local word = {}
+	local count = 0
+	local ruth = 0
+	local numbers = {"one","two","three","four","five","six","seven","eight","nine","ten"}
+
+	for k in string.gmatch(string.lower(wildcards.crocs),'%w+') do table.insert(word, k) end
+	local p = 0
+	for i, v in ipairs(word) do
+		if v == "crocodile" then 
+			count = count + 1
+			if word[i-1] == "ruthless" then
+				ruth = ruth + 1
+			end
+		elseif v == "crocodiles" then
+			for ii, vv in ipairs(numbers) do
+				if word[i-2] == vv then
+					count = count + ii
+					if word[i-1] == "ruthless" then
+						ruth = ruth + ii
+					end
+				end
+			end
+		end
+	end
+	if count == 1 then 
+		talk:Speak(count .. " crocodile, " .. ruth .. " ruthless", 1)
+		ColourNote("chartreuse", "black", "GroupMate: " .. count .. " crocodile, " .. ruth .. " ruthless")
+	elseif count > 1 then
+		talk:Speak(count .. " crocodiles, " .. ruth .. " ruthless", 1)
+		ColourNote("chartreuse", "black", "GroupMate: " .. count .. " crocodiles, " .. ruth .. " ruthless")
+	end
+	EnableTrigger("CountCrocs", false)
+end
+
+function EnterShades (sName, sLine, wildcards, styles)
+	--styles[1].text should be the white part of the room desc only without exits
+	--styles[2].text should be the room exits
+	if styles[1].text ~= RoomDesc then
+		InSpot = "shades"
+		RoomDesc = styles[1].text
+		EnterSpot(InSpot)
+--		Note("RoomDesc: " .. RoomDesc)
+	end
+end
+
+function EnterSmugglers (sName, sLine, wildcards, styles)
+	--styles[1].text should be the white part of the room desc only without exits
+	--styles[2].text should be the room exits
+	if styles[1].text ~= RoomDesc then
+		InSpot = "smugglers"
+		RoomDesc = styles[1].text
+		EnterSpot(InSpot)
+--		Note("RoomDesc: " .. RoomDesc)
+	end
+end
+
+function EnterMedina (sName, sLine, wildcards, styles)
+	--styles[1].text should be the white part of the room desc only without exits
+	--styles[2].text should be the room exits
+	if styles[1].text ~= RoomDesc then
+		InSpot = "medina"
+		RoomDesc = styles[1].text
+		EnterSpot(InSpot)
+--		Note("RoomDesc: " .. RoomDesc)
+	end
+end
+
+function EnterSnail (sName, sLine, wildcards, styles)
+	--styles[1].text should be the white part of the room desc only without exits
+	--styles[2].text should be the room exits
+	if styles[1].text ~= RoomDesc then
+		InSpot = "snail"
+		RoomDesc = styles[1].text
+		EnterSpot(InSpot)
+--		Note("RoomDesc: " .. RoomDesc)
+	end
+end
+
+function EnterGnus (sName, sLine, wildcards, styles)
+	--styles[1].text should be the white part of the room desc only without exits
+	--styles[2].text should be the room exits
+	if styles[1].text ~= RoomDesc then
+		InSpot = "gnus"
+		RoomDesc = styles[1].text
+		EnterSpot(InSpot)
+--		Note("RoomDesc: " .. RoomDesc)
+	end
+end
+
+--NOTE: this triggers on the NPCs in the room, not their room desc
+function EnterCits (sName, sLine, wildcards, styles)
+	--styles[1].text should be the white part of the room desc only without exits
+	--styles[2].text should be the room exits
+--	if styles[1].text ~= RoomDesc then
+--		InSpot = false
+--		RoomDesc = styles[1].text
+	if RoomDesc ~= "cits" then
+		InSpot = "cits"
+		RoomDesc = "cits"
+		EnterSpot(InSpot)
+--		Note("RoomDesc: " .. RoomDesc)
+	end
+end
+
+function EnterSpot (sSpotName)
+--	if InSpot == false then
+		talk:Speak("Enter, " .. sSpotName, 1)
+		EnableTrigger("LeaveSpot", true )
+--		InSpot = true
+		Note("Enter: " .. sSpotName)
+--	end
+end
+
+function LeaveSpot (sName, sLine, wildcards, styles)
+--[[
+Note("function:LeaveSpot")
+Note(styles[1].text)
+Note("RoomDesc: " ..RoomDesc)
+]]--
+	--If same room desc as the spot
+	if styles[1].text == RoomDesc then return end
+		RoomsAway = RoomsAway + 1
+	if RoomsAway > 3 then
+		EnableTrigger("LeaveSpot", false )
+		if InSpot == "crocs" then EnableTrigger("CountCrocs", false) end
+		RoomsAway = 0
+		Note("Leaving: " .. InSpot)
+		InSpot = "none"
+		RoomDesc = ""
+	end	
+end
+
+function GroupPort (sName, sLine, wildcards, styles)
+	talk:Speak(wildcards.groupmate .. " groupsays: port" .. wildcards.place, 1)
+end
+
+FumbledItems = {}
+function OtherFumble (sName, sLine, wildcards)
+	CharName = wildcards.name
+	ItemFumbled = wildcards.item
+	if CurRoom ~= nil then RoomName = CurRoom else RoomName = "Location: Unknown" end
+
+	table.insert(FumbledItems, {CharName, ItemFumbled, RoomName})
+	GMNote(CharName .. " fumbles " .. ItemFumbled .. "!")
+	talk:Speak(CharName .. " fumbles " .. ItemFumbled .. "!", 1)
+end
+function YouFumble (sName, sLine, wildcards)
+	CharName = sMyName
+	ItemFumbled = wildcards.item
+	if CurRoom ~= nil then RoomName = CurRoom else RoomName = "Location: Unknown" end
+
+	table.insert(FumbledItems, {CharName, ItemFumbled, RoomName})
+	GMNote("You fumble " .. ItemFumbled .. "!")
+	talk:Speak("You fumble " .. ItemFumbled .. "!", 1)
+end
+
+--Command: fumble[s] (<item>)
+--Groupsay: gfumble[s] (<item>)
+function ListFumbledItems(sName, sLine, wildcards)
+--all then add
+--stringmatch then add
+--empty only last
+	Matched = false
+	for i, v in ipairs (FumbledItems) do
+		if wildcards.item == "" and i == #FumbledItems then
+			Matched = true
+			FumbleLine =  i..") " .. v[1].."|"..v[2].."|"..v[3]
+			if string.starts(sLine, "fumble")  then
+				GMNote(FumbleLine)
+			elseif string.starts(sLine, "gfumble") then
+				Send("group say " .. FumbleLine)
+			end			
+		elseif wildcards.item ~= "" and string.match(v[2], wildcards.item) then
+			Matched = true
+			FumbleLine =  i..") " .. v[1].."|"..v[2].."|"..v[3]
+			if string.starts(sLine, "fumble")  then
+				GMNote(FumbleLine)
+			elseif string.starts(sLine, "gfumble") then
+				Send("group say " .. FumbleLine)
+			end			
+		elseif wildcards.item == "all" then
+			Matched = true
+			FumbleLine =  i..") " .. v[1].."|"..v[2].."|"..v[3]
+			if string.starts(sLine, "fumble")  then
+				GMNote(FumbleLine)
+			elseif string.starts(sLine, "gfumble") then
+				Send("group say " .. FumbleLine)
+			end			
+		end
+	end
+	if Matched == true then return end
+	if wildcards.item == "" or wildcards.item == nil or wildcards.item == "all" then
+		FumbleLine = "No known fumbled items."
+	else
+		FumbleLine = "No fumbled items matching '" .. wildcards.item .. "'."
+	end
+	if string.starts(sLine, "fumble") then
+		GMNote(FumbleLine)
+	elseif string.starts(sLine, "gfumble") then
+		Send("group say ".. FumbleLine)
+	end			
+end
+
+FallenFloaters = {}
+function FallingFloaterYou (sName, sLine, wildcards)
+	CharName = sMyName
+	FallenFloater = wildcards.effitem
+	if CurRoom ~= nil then RoomName = CurRoom else RoomName = "Location: Unknown" end
+
+	table.insert(FallenFloaters, {CharName, FallenFloater, RoomName})
+	GMNote("Your floater '" .. FallenFloater .. "' fell!")
+--	talk:Speak(CharName .. " fumbles " .. ItemFumbled .. "!", 1)
+end
+
+function FallingFloaterOther (sName, sLine, wildcards)
+	CharName = wildcards.name
+	FallenFloater = wildcards.effitem
+	if CurRoom ~= nil then RoomName = CurRoom else RoomName = "Location: Unknown" end
+
+	table.insert(FallenFloaters, {CharName, FallenFloater, RoomName})
+	GMNote(CharName .. "'s floater '" .. FallenFloater .. "' fell!")
+--	talk:Speak(CharName .. " fumbles " .. ItemFumbled .. "!", 1)
+end
+
+--Command: floater[s] (<item>)
+--Groupsay: gfloater[s] (<item>)
+function ListFallenFloaters(sName, sLine, wildcards)
+	Matched = false
+	for i, v in ipairs (FallenFloaters) do
+		if wildcards.item == "" and i == #FallenFloaters then
+			Matched = true
+			FloaterLine =  i..") " .. v[1].."|"..v[2].."|"..v[3]
+			if string.starts(sLine, "floater")  then
+				GMNote(FloaterLine)
+			elseif string.starts(sLine, "gfloater") then
+				Send("group say " .. FloaterLine)
+			end			
+		elseif wildcards.item ~= "" and string.match(v[2], wildcards.item) then
+			Matched = true
+			FloaterLine =  i..") " .. v[1].."|"..v[2].."|"..v[3]
+			if string.starts(sLine, "floater")  then
+				GMNote(FloaterLine)
+			elseif string.starts(sLine, "gfloater") then
+				Send("group say " .. FloaterLine)
+			end			
+		elseif wildcards.item == "all" then
+			Matched = true
+			FloaterLine =  i..") " .. v[1].."|"..v[2].."|"..v[3]
+			if string.starts(sLine, "floater")  then
+				GMNote(FloaterLine)
+			elseif string.starts(sLine, "gfloater") then
+				Send("group say " .. FloaterLine)
+			end			
+		end
+	end
+	if Matched == true then return end
+	if wildcards.item == "" or wildcards.item == nil or wildcards.item == "all" then
+		FloaterLine = "No known fallen floaters."
+	else
+		FloaterLine = "No fallen floaters matching '" .. wildcards.item .. "'."
+	end
+	if string.starts(sLine, "floater") then
+		GMNote(FloaterLine)
+	elseif string.starts(sLine, "gfloater") then
+		Send("group say ".. FloaterLine)
+	end			
+end
+
+SnatchedItems = {}
+function SnatchedOther (sName, sLine, wildcards)
+	CharName = wildcards.name
+	ThiefName = wildcards.thief
+	ItemSnatched = wildcards.item
+	if CurRoom ~= nil then RoomName = CurRoom else RoomName = "Location: Unknown" end
+	if string.match(ThiefName, "Chimara") then
+		--Note("NO REPORTING CHIM!")
+		return
+	end
+	table.insert(SnatchedItems, {ThiefName, ItemSnatched, CharName, RoomName})
+	GMNote(ThiefName .. " snatches " .. ItemSnatched .. " from " .. CharName .. "!")
+	talk:Speak(ThiefName .. " snatches " .. ItemSnatched .. " from " .. CharName .. "!", 1)
+end
+function SnatchedYou (sName, sLine, wildcards)
+	CharName = sMyName
+	ThiefName = wildcards.thief
+	ItemSnatched = wildcards.item
+	if CurRoom ~= nil then RoomName = CurRoom else RoomName = "unknown" end
+
+	table.insert(SnatchedItems, {ThiefName, ItemSnatched, CharName, RoomName})
+	GMNote(ThiefName .. " snatches " .. ItemSnatched .. "!")
+	talk:Speak(ThiefName .. " snatches " .. ItemSnatched .. "!", 1)
+end
+function DropSnatched (sName, sLine, wildcards)
+	ThiefName = wildcards.thief
+	ItemSnatched = wildcards.item
+	if CurRoom ~= nil then RoomName = CurRoom else RoomName = "Location: Unknown" end
+	GMNote(ThiefName .. " drops " .. ItemSnatched .. "!")
+	talk:Speak(ThiefName .. " drops " .. ItemSnatched .. "!", 1)
+	table.insert(SnatchedItems, {ThiefName, ItemSnatched, "Dropped", RoomName})
+end
+
+--Command: snatch[es] (<item>)
+--Groupsay: gsnatch[es] (<item>)
+function ListSnatchedItems(sName, sLine, wildcards)
+	Matched = false
+	for i, v in ipairs (SnatchedItems) do
+		if wildcards.item == "" and i == #SnatchedItems then
+			Matched = true
+			SnatchLine =  i..") " .. v[3].."|"..v[1].."|"..v[2].."|"..v[4]
+			if string.starts(sLine, "snatch")  then
+				GMNote(SnatchLine)
+			elseif string.starts(sLine, "gsnatch") then
+				Send("group say " .. SnatchLine)
+			end			
+		elseif wildcards.item ~= "" and string.match(v[2], wildcards.item) then
+			Matched = true
+			SnatchLine =  i..") " .. v[3].."|"..v[1].."|"..v[2].."|"..v[4]
+			if string.starts(sLine, "snatch")  then
+				GMNote(SnatchLine)
+			elseif string.starts(sLine, "gsnatch") then
+				Send("group say " .. SnatchLine)
+			end			
+		elseif wildcards.item == "all" then
+			Matched = true
+			SnatchLine =  i..") " .. v[3].."|"..v[1].."|"..v[2].."|"..v[4]
+			if string.starts(sLine, "snatch")  then
+				GMNote(SnatchLine)
+			elseif string.starts(sLine, "gsnatch") then
+				Send("group say " .. SnatchLine)
+			end			
+		end
+	end
+	if Matched == true then return end
+	if wildcards.item == "" or wildcards.item == nil or wildcards.item == "all" then
+		SnatchLine = "No known snatched items."
+	else
+		SnatchLine = "No snatched items matching '" .. wildcards.item .. "'."
+	end
+	if string.starts(sLine, "snatch") then
+		GMNote(SnatchLine)
+	elseif string.starts(sLine, "gsnatch") then
+		Send("group say ".. SnatchLine)
+	end			
+end
+
+function GMNote (text)
+	ColourNote("chartreuse", "", "GroupMate: " .. text)
+end
+
+function CaptureRoomBrief (sName, sLine, wildcards)
+	CurRoom = sLine
+	--GMNote(sLine)
+end
+
+--Adds timestamp to beggining of each line, useful for timing things
+function AddTimeStamp (sName, sLine, wildcards, styles)
+	if LastTime == nil then
+		LastTime = os.time()
+		ColourTell("chartreuse", "black", "[" .. os.date ("%I:%M:%S %p") .."]")
+	end
+	--At what intervals to add the timestamp, number is in seconds
+	local Intervals = 0
+	
+	if 	os.difftime (os.time(), LastTime) >= Intervals then
+--		ColourTell("chartreuse", "black", os.date ("%I:%M:%S %p") .."|")
+		ColourTell("chartreuse", "black", os.date ("%Ss") .."|")
+		LastTime = os.time()
+	end
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+	Note("")
+	
+end
+
+--Record start time of backstab
+function StartTiming (sName, sLine, wildcards, styles)
+--Note("!")
+		ThisStartTime = os.time()
+		ColourTell("white", "black", "[")
+		ColourTell("chartreuse", "black", os.date ("%Ss"))
+		ColourTell("white", "black", "]")
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+	Note("")	
+end
+
+--Record bury time after
+function EndTiming(sName, sLine, wildcards, styles)
+--Note("?")
+		ColourTell("white", "black", "[")
+		ColourTell("chartreuse", "black", os.date ("%Ss"))
+		ColourTell("white", "black", "]")
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+	if ThisStartTime ~= nil then
+		ColourTell("white", "black", "[")
+		ColourTell("chartreuse", "black", "Elapsed Time: " .. os.difftime (os.time (), ThisStartTime) .. "s")
+		ColourTell("white", "black", "]")
+	end
+	Note("")
+end
+
+-- Check if a string starts with another string
+-- Taken from QuowMDT
+function string.starts(String,Start)
+   return string.sub(String,1,string.len(Start))==Start
+end
+-- Check if a string ENDS in another string
+function string.ends(String,End)
+   return End=='' or string.sub(String,-string.len(End))==End
+end
+
+--GMCP Stuff
+ToLog = false
+function StartLog(name, line, wildcards)
+SpotName = wildcards.spot or "unknown"
+CityName = wildcards.city or "unknown"
+if ToLog == false then 
+	LoggedRooms = {}
+	ToLog = true
+	Note("Starting to log '".. SpotName .. "'.")
+elseif ToLog == true then
+	for i, v in ipairs(LoggedRooms) do
+		ColourNote("brown", "", v)
+	end
+	Note("Stopping to log '".. SpotName .. "'.")
+	ToLog = false
+end
+
+end
+--Gather ROOM data
+function NoteRoomInfo(name, line, wildcards)
+  --local Place = ""
+  Place = "spot"
+  if wildcards.name ~= nil and wildcards.name ~= "" then
+	Place = wildcards.name
+  end
+--if RoomInfo.identifier ~= nil then
+--  ColourNote("deeppink", "", "    \[\"" .. RoomInfo.identifier .. "\"\] = { spot = \"" .. Place .. "\", city = \"djelibeybi\", },")
+ -- ["5d70a146a4030594bc108f71f9d8fc78f6fabf2a"] = { spot = "cguards", city = "djelibeybi", },
+
+--[[	for k, v in pairs (RoomInfo) do
+		--Note(k)
+		--Note(v)
+		
+--		ColourNote("pink", "", Place .. "\"RoomInfo\." .. k .. "\"=\"" .. v .. "\"")
+	end
+  ]]--
+--  else	
+	--	ColourNote("pink", "", "UNKNOWN identifier")
+  --end
+	ColourNote("hotpink", "", "STAMPED: " .. string.upper(Place))
+  
+end
+
+RoomIDs = {
+	--Shades, AM
+    ["AMShades"] = { spot = "shades", city = "ankh-morpork", },	
+	--Cguards
+    ["6f668a720914be85b0abb5da849e99749d7d0ea3"] = { spot = "cguards", city = "djelibeybi", },
+    ["a410bc0ee4c3f9be0155dbd8c43bb981a7c565fa"] = { spot = "cguards", city = "djelibeybi", },
+    ["315be737f8676ba7f88e07f533363220b7b42a7d"] = { spot = "cguards", city = "djelibeybi", },
+    ["c4a83568847ea647ac1c8c0e9b1902a75ba9fde8"] = { spot = "cguards", city = "djelibeybi", },
+    ["99d0b05a2e05e85aaadac3b01103b4d56f16d3ff"] = { spot = "cguards", city = "djelibeybi", },
+    ["54f28609e71c7659798bc53278b24537bf67e345"] = { spot = "cguards", city = "djelibeybi", },
+    ["2184c8419b7945b55d718ba87758cb10eb8287d9"] = { spot = "cguards", city = "djelibeybi", },
+    ["05dac6937a0bb029440b25554f189cc4d66ee00f"] = { spot = "cguards", city = "djelibeybi", },
+    ["d685c7a36794413cdf548c5ec21aad8088de1179"] = { spot = "cguards", city = "djelibeybi", },
+    ["a410bc0ee4c3f9be0155dbd8c43bb981a7c565fa"] = { spot = "cguards", city = "djelibeybi", },
+    ["90b91014b5d945a59187fc4b009216f7ced6196f"] = { spot = "cguards", city = "djelibeybi", },
+    ["b61263a674e487126c3d79bf5002737ae86cffaf"] = { spot = "cguards", city = "djelibeybi", },
+    ["b129e486e76dd0c648adf6b6d310b71dfbcc4bfb"] = { spot = "cguards", city = "djelibeybi", },
+    ["ba78df0579a91e1d01f09179a162532b19c2aa06"] = { spot = "cguards", city = "djelibeybi", },
+    ["e411366f3ff9c84b9cbb7ad75937b8f8aa562552"] = { spot = "cguards", city = "djelibeybi", },
+    ["780b00a39490812ccfe170095fb62fa6f906c729"] = { spot = "cguards", city = "djelibeybi", },
+    ["78ddf153482b6003e43388618e8f93564f1df1ff"] = { spot = "cguards", city = "djelibeybi", },
+    ["acd9f4fa7aecea56479f3229bbbd0713daf6e14b"] = { spot = "cguards", city = "djelibeybi", },
+    ["295051bd82708238e97b0c744e62792ed25b9778"] = { spot = "cguards", city = "djelibeybi", },
+    ["f5390582884cc1def3c60a7250c36f9f6fbc81b6"] = { spot = "cguards", city = "djelibeybi", },
+    ["95c3ee90edf97405fd8217936114203fe208ed6d"] = { spot = "cguards", city = "djelibeybi", },
+    ["cd459b7506eb7f9b41c741d01b5eef91de0d6b93"] = { spot = "cguards", city = "djelibeybi", },
+    ["285a65d776d3557788fa1c7d3a260b854878b67a"] = { spot = "cguards", city = "djelibeybi", },
+    ["c3fb28c20095d4764d828d836d9d3c257b3deb4c"] = { spot = "cguards", city = "djelibeybi", },
+	["76baaedd4b31bb7e666d3fd8c0ed1a72ac2f8a76"] = { spot = "cguards", city = "djelibeybi", },
+	["5d70a146a4030594bc108f71f9d8fc78f6fabf2a"] = { spot = "cguards", city = "djelibeybi", },
+	--Shaker
+    ["cb8aaf1cc79bb5e8977a6d0124791dd116eef443"] = { spot = "shaker", city = "ankh-morpork", },
+	--Flaming Cabbage
+    ["cca9645565f2bb0d017ea9b1dcc9d1b3e9fcfe72"] = { spot = "flaming_cabbage", city = "ankh-morpork", },	
+	--Gnu's
+    ["b1247526963ba323293be3d85c77dda0524b0c35"] = { spot = "gnus", city = "bes_pelargic", },	
+	--Crocs
+    ["70546ec71867645ab5c51e9ce6087b75dcf4176f"] = { spot = "crocs", city = "ephebe", },	
+	--Snail
+    ["51d2e54cba38caa667e523bd5b735b841562265d"] = { spot = "snail", city = "bes_pelargic", },
+    ["896bb970662fb4b34eae9f3a64772bee92f7081b"] = { spot = "snail", city = "bes_pelargic", },
+    ["f512a4c3df5cfce4fabdc710508b36665b114752"] = { spot = "snail", city = "bes_pelargic", },
+    ["8032556970f9edb90d048c02c0c42cfda00a0bc9"] = { spot = "snail", city = "bes_pelargic", },
+    ["f512a4c3df5cfce4fabdc710508b36665b114752"] = { spot = "snail", city = "bes_pelargic", },
+    ["d8573ca4a31a41d519c493a6b39566137e316a17"] = { spot = "snail", city = "bes_pelargic", },
+    ["32aff1b15b696026a201fb62889da65ad253f029"] = { spot = "snail", city = "bes_pelargic", },
+    ["86787be074a76e3e7c3974474f445645b1cae86f"] = { spot = "snail", city = "bes_pelargic", },
+    ["32aff1b15b696026a201fb62889da65ad253f029"] = { spot = "snail", city = "bes_pelargic", },
+    ["f564335ff63ceae37bac3e4ebb788152d4fc6114"] = { spot = "snail", city = "bes_pelargic", },
+    ["32aff1b15b696026a201fb62889da65ad253f029"] = { spot = "snail", city = "bes_pelargic", },
+    ["e51fb37129128552cf8c3c329f04c234ce3e3eb9"] = { spot = "snail", city = "bes_pelargic", },
+    ["0631ed4d107f25764eb3b1de5ae3da2ac3f80c83"] = { spot = "snail", city = "bes_pelargic", },
+    ["daf3b75b987d8516fc744dd4b43e3e7d6fe4172b"] = { spot = "snail", city = "bes_pelargic", },
+    ["fc51a7f8a41b3639e1c38fded3369abb048b5690"] = { spot = "snail", city = "bes_pelargic", },
+    ["ae0fd84d248cfca0abb4b9509bbcbd93a0db9c16"] = { spot = "snail", city = "bes_pelargic", },
+    ["0140053262a1ad00fd33680e953ccce8e76bdcc7"] = { spot = "snail", city = "bes_pelargic", },
+    ["255293f8382698d17016f22c08133ec7718d085a"] = { spot = "snail", city = "bes_pelargic", },
+    ["a33a3f28adb8eccfe764508cfde10199e3d7a3b3"] = { spot = "snail", city = "bes_pelargic", },
+    ["6256f4af986d38f52c6eeec8490b15364dcca4f8"] = { spot = "snail", city = "bes_pelargic", },
+    ["ed877ca123ad45c40eb5688e5951cdd8dd4b62ce"] = { spot = "snail", city = "bes_pelargic", },
+    ["a165bce29b3f4aa4d437f181635de8c4ac4b8e6d"] = { spot = "snail", city = "bes_pelargic", },
+    ["c246c81b5dcd9d2658338ec09efdee72ec9a2d6d"] = { spot = "snail", city = "bes_pelargic", },
+    ["c5e7b308e497cec097972e83f79c585390696213"] = { spot = "snail", city = "bes_pelargic", },
+    ["332d9673f044de89777369035e70de70c86d0dd9"] = { spot = "snail", city = "bes_pelargic", },
+    ["02954ba794941375e7c821956ed2762da2feb237"] = { spot = "snail", city = "bes_pelargic", },
+    ["f255c95722d890b854ea47aad70a204a252b9b41"] = { spot = "snail", city = "bes_pelargic", },
+    ["f0ecc2b0e5969fb542b08ca4d2821181c847f3c2"] = { spot = "snail", city = "bes_pelargic", },
+    ["501805b9c6a691d5cf69f3066e2a2ff33f5eaea8"] = { spot = "snail", city = "bes_pelargic", },
+    ["febf20a0847c00f9d7f1fd12834517bb22dcbf4a"] = { spot = "snail", city = "bes_pelargic", },
+    ["475911910fd731946bf67af4d379835188444b3c"] = { spot = "snail", city = "bes_pelargic", },
+    ["a485bb55fa9e9c90843258c915f1a803fc4be596"] = { spot = "snail", city = "bes_pelargic", },
+    ["ab852c2eeadc1ff623d01d17a4fd453f6bf1e95a"] = { spot = "snail", city = "bes_pelargic", },
+    ["5d2da42534fa5d8d65c69f9b0aaac06fe2bcc063"] = { spot = "snail", city = "bes_pelargic", },
+    ["b5cb9ef87ad9051b423c17438e6a848f7fc492e8"] = { spot = "snail", city = "bes_pelargic", },
+    ["184cae38cfb5584827d33a2e9ee053f0789987f2"] = { spot = "snail", city = "bes_pelargic", },
+    ["d3a5296feb2e3496f44d93dd173ad9ec440938a0"] = { spot = "snail", city = "bes_pelargic", },
+    ["8029e603ff702c0ee25ef5ffda57656318253a18"] = { spot = "snail", city = "bes_pelargic", },
+    ["ee2c6b203b554fbed02c4361c313064de5dd1e2c"] = { spot = "snail", city = "bes_pelargic", },
+    ["116f211f7b0ca4232f14de165a5cbd63c8fbfe40"] = { spot = "snail", city = "bes_pelargic", },
+    ["7e04aae777f2b0c2800fe0d9c56fda567e434559"] = { spot = "snail", city = "bes_pelargic", },
+    ["b07fe2158e9ff237bb1f0879356a73a3e9770927"] = { spot = "snail", city = "bes_pelargic", },
+    ["f868b563b47793f11298e65c66e073bac7889292"] = { spot = "snail", city = "bes_pelargic", },
+    ["93ef649447a16088e9d0445b7160926a62a447ed"] = { spot = "snail", city = "bes_pelargic", },
+    ["00340668354a3e78970871913542318703328941"] = { spot = "snail", city = "bes_pelargic", },	
+	--Black Market, BP
+    ["982e809a23be69f5bcb0aba65e9f0b31da73e806"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["31d5891d6494cca3befb355bc63be0810ce50d40"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["b5a9944c6e264eb959d36ed02f6907322f6399c8"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["e3aa6ddd99d95e39b93795bfbde3e66b73a0d02a"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["e9f65119ec8acc822a8efb47d4146ee7fa924b4a"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["639c815db46cbcf8d443bdb783dd10f33fad8f49"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["9374012a1e06e9cdb09819550abdbc13e8010995"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["263ea81beb12329ee2ff24f65e9ba95cc94a95c6"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["c5107347eeb67b3d0fdee7191b08a804a91602e3"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["dc95424a18d18ecca90d95bfa1cc8217b1ddfa83"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["caa9cb5be05e011bb3765425e496af5ba177e3d0"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["c7c6f5720d2c587f80696b6f0ec7f9ac0f084b06"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["d62816ce9950dffe6bafca3f40d40d61433cc97e"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["bf170d49dd81b1e0f3c44c085b5bd390a08172f3"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["9588161445f5a90547bde8158c0e4ba02ba132c8"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["41278c32e9de6c04e7a65b510689ce4d95387a24"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["b057e66c03d0deaa77992ad1e6a178a586a8953d"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["a1e69a1a20c87d5e1640b79c1d026a6b75404f6b"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["0ae9d8c4f2b48f4fcc4cb57fd85443399be2ecc5"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["9bfac54bbc89da35556960180a410e060a479ed2"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["e4646eab906aef1187a9dd3e980441b8f6b8d68c"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["98857585e5b0c25aad787f4a814e72b9a07008a9"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["f6c60dd36ed38707eb954c3a670f2f9370a79399"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["2ad3b14d9c39254b67ec6cb0003131eac4cccf3e"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["730753618119e17ed7fbe7a5303f65e774657a76"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["9f2c3ba13978e38041a7f411503d402b6b4b1ef8"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["4377f4ffe153460d7e9ce4766b83911d873b4824"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["67a5023068111bb587aa48b66391c5d1bba42f5b"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["b36800b505142c34b6a59e3d353dc23bb6387b75"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["d58ab6e4ed962203abc0427db50ddc81949bb88c"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["84e8e1d41101c9240faef458c85fb625526020d4"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["d5d67fc2e1e936a040cffb600bb9972add4e52a5"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["7acb877a5e00d27b548a19f0a90fea5b26a5140f"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["8654296946a63ab5dfe63e1e156af6ce4c191fd4"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["6c367a8d2c37a2cdd64d9b5c278ff106f418fdca"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["d58bd56e91f015e41fdde8da5efc7229068f47e6"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["cf98f69e09a9801175ec07e9c369bda97f1eb81a"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["e243e9430cbad4877cd4a4e4c318d9b968abb7bc"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["53bb75fa7486f044bd386cd82ac60162d0ac8183"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["435bb313d903985d89324cd8cdbba8068487b2a6"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["6b55b93d3c02e040b6e9664790ccf0feda00a971"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["69c367485a2f91b38ab1cfb816ac27cd1bf3c380"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["1d39e3a56eb8a09ee8f30c470ce5e45e54fa3c64"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["025c8fb7331f0b00769c9d413c399600bc8fde49"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["1e3ae1ba6943a564aae49d57a42309079406fd07"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["528230fc8ceb051de4f9c74050c29026ce0fe055"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["0238a6d87503d207d821e18f76f224d0a7659828"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["4fc09542c1022fbe2b338f4cd61e8e5c1c4fb059"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["c6b9247373df384e09820448fbb30fc0b03406a3"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["2d13f3b060588de14211a94139f5301f3c274d1a"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["69c03124007c140469f3fc26753ccc23bc740c44"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["1cda9f3901bcaf3d104ddfade765a9aef69a2d60"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["e4cdd8e544188af7bcf02d6aa97a8b1be536b307"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["4dcb6bf88f306c2dc0c1e22677373d04552bab7a"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["003f72baae4e13372e6217e2b32891a743ba750e"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["dae754ba34a7b166ff823de8262b390293edd79a"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["5b32c224783d165a12609971712a2318450ba3a9"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["3b6f4b9504332ee1ccdf3ff1d01eb43aac3e1148"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["633e4a166d6c3ec2bddb49f7a715b6b295bd2e18"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["87d410ca8290b97848c27d6d50d69547a044813f"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["c35aabd302e8bb46d6a9d6f7fbb5068022e097f9"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["77ce87035bef86def761b72a11ababa9c48f314c"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["94f4b3902fe0f4bdfc42e7018a71d7134482dbbe"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["c66fc58c1c269a5c8d8de6793dd9b15095b14787"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["840f44965836a66cfac9932e1a582cc6fb925170"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["9e822bf44096bc8f2db57fc0cba5f73ea2ecb0a5"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["c0829789c60e8bfcbb6ab6ecb667a59c8decefee"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["73ee4137af30a761ea3456d88d30741edcdc507f"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["f1d87d47acb65d172469afb0d3ce806653501ac6"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["fd6ad333b5c9261e58782724fa21ab3b7f4c3f9c"] = { spot = "bmarket", city = "bes_pelargic", },
+    ["bc627ccfb2408f6e0bc2a0b1d3a159d92d05ce58"] = { spot = "bmarket", city = "bes_pelargic", },	
+	--Zoon Liar
+    ["28a6cac4941a5c2035d9a5394d9b84b38731f2ec"] = { spot = "zoon_liar", city = "ohulan_cutash", },
+	--Thousand Parades, BP
+    ["3862c5fd0fe83f4080bdb9b94519bf8da89d5015"] = { spot = "1k", city = "bes_pelargic", },
+    ["bfd9a46f2d92d56901814d00a9c3523053ece606"] = { spot = "1k", city = "bes_pelargic", },
+    ["6c6e41001ecd193e7281839d99b4c281ee0f897f"] = { spot = "1k", city = "bes_pelargic", },
+    ["7af9d2df1b733aa0543e3ced6f869504dcbe93df"] = { spot = "1k", city = "bes_pelargic", },
+    ["6ca76db210c7101f4fd0eeba853f57b212731abf"] = { spot = "1k", city = "bes_pelargic", },
+    ["35696de1c035494099961b4155ddff479340008c"] = { spot = "1k", city = "bes_pelargic", },
+    ["79713b4ca3d99f832f3caf58d90c85c244b260d4"] = { spot = "1k", city = "bes_pelargic", },
+    ["0386e4feb14287613807a3975bcf1af2818c6818"] = { spot = "1k", city = "bes_pelargic", },
+    ["5a471316a9f01861444c6e4d9ec057eeae608657"] = { spot = "1k", city = "bes_pelargic", },
+    ["f86d7ab9c53b5c1c7de3226ed5c3f7d05ea6b7ed"] = { spot = "1k", city = "bes_pelargic", },
+    ["1601ed6d1b3e6bfcaaa5791cce74fe612eaca60d"] = { spot = "1k", city = "bes_pelargic", },
+    ["7eacc75e3e626fe0482a0d07d228aaf1871295d5"] = { spot = "1k", city = "bes_pelargic", },
+    ["6b4d27767423fb0d29c8ef8aa8664980f029942f"] = { spot = "1k", city = "bes_pelargic", },
+    ["76fb400b92d8370e5187aab710362126b4b1eda0"] = { spot = "1k", city = "bes_pelargic", },
+    ["0dfd2154b1a1a5f492e2fd8e12814559f4452de8"] = { spot = "1k", city = "bes_pelargic", },
+    ["c43ca6c7fa542d2c8bd06685578b02d6302c1fb8"] = { spot = "1k", city = "bes_pelargic", },
+    ["bbec1d1d952c6d36559e27d7996affa3c3529af6"] = { spot = "1k", city = "bes_pelargic", },
+    ["87910088fc95e65f43cd95046fc34313cf2922a1"] = { spot = "1k", city = "bes_pelargic", },
+    ["a802341d42ab2f3e8a0551b155ce3d274d804386"] = { spot = "1k", city = "bes_pelargic", },
+    ["a7ff939a3775cb0e9f2c7ec34446a711c21f23b3"] = { spot = "1k", city = "bes_pelargic", },
+    ["dcdcedfd38275915db00f8dea416276829e5ab58"] = { spot = "1k", city = "bes_pelargic", },
+    ["d131fb9a9d2ab605d4a94e8acd07283f0c7043bd"] = { spot = "1k", city = "bes_pelargic", },
+    ["1c059b6d8431ab02cf1d321edc65803926ebedfb"] = { spot = "1k", city = "bes_pelargic", },
+    ["a14dff65c90f5224ea0cdb1bb20483c2220cb733"] = { spot = "1k", city = "bes_pelargic", },
+    ["686842f0e6574e07834fdf9e76c4530cc5aad9ea"] = { spot = "1k", city = "bes_pelargic", },
+    ["5ea43c33c1f2b69076028489dcda7764d29a4de4"] = { spot = "1k", city = "bes_pelargic", },
+    ["a2e58e019e725fbde002dfc1f374dc2e24ab81c8"] = { spot = "1k", city = "bes_pelargic", },
+    ["5934d316fe1683c2f07b68c12a24e38b52cdcfb2"] = { spot = "1k", city = "bes_pelargic", },
+    ["afe7bb3e7a6da51f8853dabe80a616d0cb969ce9"] = { spot = "1k", city = "bes_pelargic", },
+    ["5aa0ad1f8b1da33ec2238b7f7dc0d9626c581a72"] = { spot = "1k", city = "bes_pelargic", },
+    ["5c85e502d046f725eaa9b5b8ce06bc271d8961e2"] = { spot = "1k", city = "bes_pelargic", },
+    ["c333ce23e183164992fb0023dd08eb85fc8f7822"] = { spot = "1k", city = "bes_pelargic", },
+    ["f5dd0ec08b4a36ea9c0c4b6da6ed63efa36dd1ef"] = { spot = "1k", city = "bes_pelargic", },
+    ["885c74a09acf91844e41936ffcf2550f48c34a90"] = { spot = "1k", city = "bes_pelargic", },
+    ["95ede200c782fdb09239a2db85dd9f8775922f86"] = { spot = "1k", city = "bes_pelargic", },
+	--Dojo, BP
+    ["62c1d0d4a3449a4db14dc64554fecb13f663ad03"] = { spot = "dojo", city = "bes_pelargic", },
+    ["f80561834fb101d794b574ef5009e689f55f9f45"] = { spot = "dojo", city = "bes_pelargic", },
+    ["6139cc42dc377c1bda38128091c7a1cbfd3d2746"] = { spot = "dojo", city = "bes_pelargic", },
+    ["b25bbca7ab1a3e9757c3af0816d67253f48ab2d9"] = { spot = "dojo", city = "bes_pelargic", },
+    ["08552763702451e904ae42433f2e600a2d071c3e"] = { spot = "dojo", city = "bes_pelargic", },
+    ["712f5f81b258e5edc211784051749cb3f100041d"] = { spot = "dojo", city = "bes_pelargic", },
+    ["e45feb1e8fa6f95375489ff8990f03c1cc2e90e7"] = { spot = "dojo", city = "bes_pelargic", },
+    ["46be4e1a8acee71dd1a219f922f0336959aa2bc8"] = { spot = "dojo", city = "bes_pelargic", },
+    ["adef8379d080af980955bc50fc9c7ec8647ade18"] = { spot = "dojo", city = "bes_pelargic", },
+	--Smugglers, Ephebe
+    ["ebff897af2b8bb6800a9a8636143099d0714be07"] = { spot = "smugglers", city = "ephebe", },
+    ["c0495c993b8ba463e6b3008a88f962ae28084582"] = { spot = "smugglers", city = "ephebe", },
+    ["501c0b35601b8649c57bb98b8a1d6c2d1f1cea02"] = { spot = "smugglers", city = "ephebe", },
+    ["8c022638ba642395094bc4dc7ba0a3aaf64c02c1"] = { spot = "smugglers", city = "ephebe", },
+    ["898b33dcc8da01ef21b064f66062ea2f89235f5f"] = { spot = "smugglers", city = "ephebe", },
+    ["0b43758d635f631d46b1a1f041fd651e446856ca"] = { spot = "smugglers", city = "ephebe", },
+    ["1793722d05f49d48f28ce3a49e8b97d59158b916"] = { spot = "smugglers", city = "ephebe", },
+    ["e28d07530ae163f93ade722c780ce897a4e93a15"] = { spot = "smugglers", city = "ephebe", },
+    ["a184520b84e948f89e621ab50a500c47faefa920"] = { spot = "smugglers", city = "ephebe", },
+    ["8048df6be9b61c0f49e988924185ce937a38814b"] = { spot = "smugglers", city = "ephebe", },
+    ["f026140904d9f0c910b4975b937b20189f225605"] = { spot = "smugglers", city = "ephebe", },
+    ["952786ea48134ac3505cbabb6567ef35fad13af8"] = { spot = "smugglers", city = "ephebe", },
+    ["b9bb8741399c7bdf6836cb06148c2e7c4f033853"] = { spot = "smugglers", city = "ephebe", },
+    ["0663269ccae61f6b313cb378213c74131b394fbc"] = { spot = "smugglers", city = "ephebe", },
+    ["03a3ca540e9c7fc9dfa914d213b974a0b207f596"] = { spot = "smugglers", city = "ephebe", },
+    ["3fedc83188999bd20733ba77f02409aee8011127"] = { spot = "smugglers", city = "ephebe", },
+    ["033906622a542f9e0550608b86932dff52d7e8c2"] = { spot = "smugglers", city = "ephebe", },
+    ["6ef15a8643f1515f8a96fb646dd8e2ab80bade15"] = { spot = "smugglers", city = "ephebe", },
+    ["ddabfb40040805889125b223a2d679e0a9716fd2"] = { spot = "smugglers", city = "ephebe", },
+    ["468f6243998bda671161e6afe079ff5fac866fc1"] = { spot = "smugglers", city = "ephebe", },
+    ["16a0b8c39025147f9f87cf860b76380af6c9e1d4"] = { spot = "smugglers", city = "ephebe", },
+    ["4e6aef2cd732fb35c2c110d768605f4aa56194af"] = { spot = "smugglers", city = "ephebe", },
+    ["a9734849233e5f97fd676676a9853b22b0cb22e8"] = { spot = "smugglers", city = "ephebe", },
+    ["d57af869e7ff7abe31ceb1245ccbc6d47df49b7b"] = { spot = "smugglers", city = "ephebe", },
+    ["372dd28add7bfc7ed26f4da4047a501afcf24696"] = { spot = "smugglers", city = "ephebe", },
+	--Hidden Room
+
+    ["886a1404021cdfb21668823aa0ab2cefd05fbcd1"] = { spot = "smugglers", city = "ephebe", },	
+	--Cits, Ephebe
+	--E
+    ["4064c938b803bb0993333733ceb240c0fc4116e1"] = { spot = "cits", city = "ephebe", },	
+	--NE
+    ["f4949e23d9ae05eb9b104ea3aa99630e2dc095be"] = { spot = "cits", city = "ephebe", },	
+	--SW
+    ["bad3702c30c3e459578d4e400abac17fd4942e07"] = { spot = "cits", city = "ephebe", },	
+	--SE
+    ["60d87a8ee563cf35cd4e06e0a7bba6eb9ef2f4ad"] = { spot = "cits", city = "ephebe", },	
+	--W
+    ["491e3c18a0882a65e38c591f808bd423e29147d2"] = { spot = "cits", city = "ephebe", },	
+	--NW
+    ["64f456ea905d9ea7c0b0caf841c2f3771b075955"] = { spot = "cits", city = "ephebe", },	
+	--Casino, Genua
+    ["081bb9e8862a6ac8e483643a54676ce2e85125b2"] = { spot = "casino", city = "genua", },
+    ["8357512e66bfacc2447da77a7274f006b1118853"] = { spot = "casino", city = "genua", },
+    ["8b7eefa4c958d0ff05029fe390d772ad42b3c1c4"] = { spot = "casino", city = "genua", },
+    ["e9a4b7457be59438fbbfc44559e70a97c106f62c"] = { spot = "casino", city = "genua", },
+    ["6c5e875f8b49220f2fe71fd59871ac418c7169aa"] = { spot = "casino", city = "genua", },
+    ["d84d44aaa9bd513fe0508b26deb5df4a00c53f0a"] = { spot = "casino", city = "genua", },
+    ["11f3c9c2ccc3c66cdcaaad2a44854531275ccc52"] = { spot = "casino", city = "genua", },
+    ["2728c33f0ce86c4c14bdb25962a8a9ab2d500d61"] = { spot = "casino", city = "genua", },
+    ["29b5391bc5933e9fbfe3b8074ebd94cad6eed287"] = { spot = "casino", city = "genua", },
+    ["6c8e158e950a0407e3b41ef1e37aff82235bf0c4"] = { spot = "casino", city = "genua", },
+    ["fe497c134a984bea59a9fc3ed48e49f162c7a76f"] = { spot = "casino", city = "genua", },
+    ["9f2f940507f60ead3a0d49a82363e40c8db6ead3"] = { spot = "casino", city = "genua", },
+    ["973b997211696d4725ea15cc23474d13429e545d"] = { spot = "casino", city = "genua", },
+    ["5ace57950e0474d19599cd29ac500daa47cbfdb6"] = { spot = "casino", city = "genua", },
+    ["34e8ca833ae1daf9f42da4a9023bad45dababd6d"] = { spot = "casino", city = "genua", },
+    ["3bc1cfe43bbccf2b5e4571965443411053fbd1f3"] = { spot = "casino", city = "genua", },
+    ["f7409765bf859c4ead6061dbddebc2d89f41d89a"] = { spot = "casino", city = "genua", },
+    ["31a2cf68c58644c05b46730186e3e33e15a14424"] = { spot = "casino", city = "genua", },
+    ["8b8c7a502d1443c866fa26a3ad4e0cb8807b2272"] = { spot = "casino", city = "genua", },
+    ["0708544a3741005b33e0c2c9b8b3d6e80bbb8607"] = { spot = "casino", city = "genua", },
+    ["1113cc5bec6b77e40992ccf94968106ae473f960"] = { spot = "casino", city = "genua", },
+    ["7a5800e6ab775942048fd6c01b63e5cdc2bb3804"] = { spot = "casino", city = "genua", },
+    ["ae2461dcbeb6374d6e9b344b2f8153d09e874aff"] = { spot = "casino", city = "genua", },
+    ["d572da8982764dd019315e09c4fc75b93bbf0bf6"] = { spot = "casino", city = "genua", },	
+	--Stables, Genua
+    ["77e943d49de7348fdef7c49bfcc05427af22d739"] = { spot = "stables", city = "genua", },
+    ["70bf1dd2c838b6b018f76886832c161c66495813"] = { spot = "stables", city = "genua", },
+    ["62603b86954ab72c73d48dc95fb74d71cbdc7608"] = { spot = "stables", city = "genua", },
+    ["0718929d8b608454f33d0bcb66b48d22caf4be8c"] = { spot = "stables", city = "genua", },
+    ["6919307c65d0bdb432a2f02689447006decefcf8"] = { spot = "stables", city = "genua", },
+    ["aeb7458ea6687042e3583984fba9669928159b91"] = { spot = "stables", city = "genua", },
+    ["09451b54e0d98a60c52ab9fdccdb7370c383c0b1"] = { spot = "stables", city = "genua", },
+    ["42d54db8308754b3c65390ed5471417ec77f04db"] = { spot = "stables", city = "genua", },
+    ["8ce99945e33380d22cb63199afe67d7fdfce40f1"] = { spot = "stables", city = "genua", },
+    ["745f5594d43e94c782141c67b73fe02365d2eca4"] = { spot = "stables", city = "genua", },	
+	--Pizza, Genua
+    ["9d801d155ff155b7134ebf5eeb8c73117563da56"] = { spot = "pizza", city = "genua", },
+    ["82129d6537efab6e0ff30cdb97b2729d23642b3f"] = { spot = "pizza", city = "genua", },
+    ["ae9c75c25087146424d62b4e7a497fe3e8a70be2"] = { spot = "pizza", city = "genua", },
+    ["babb4de327cd0e604e5368a82219b00772195e68"] = { spot = "pizza", city = "genua", },
+    ["41a9038660df9a36f11513d865212f6a1d176853"] = { spot = "pizza", city = "genua", },
+    ["c28bf5e86ee23fbb8fb8d58fbb4df6a16c8f5645"] = { spot = "pizza", city = "genua", },
+    ["2c758323585123f62deca8a3bcdb4e56e377a6a0"] = { spot = "pizza", city = "genua", },
+    ["335be77d5d88cf6e09bf91d527400be70f0b8a0c"] = { spot = "pizza", city = "genua", },
+    ["84534472f7d603c1b8e63b4ededb13e7e13d5161"] = { spot = "pizza", city = "genua", },	
+	--Giants, Ramtops
+    ["a3c7efad1e05b64f673ac0ea996cd383157241bf"] = { spot = "giants", city = "ramtops", },
+    ["42cdaf35ab2cbf0d43899203b7f96f141dd68ef1"] = { spot = "giants", city = "ramtops", },
+    ["2accfe93cf2daddad4b4c5dde8d2c09951938d5e"] = { spot = "giants", city = "ramtops", },
+    ["a38df4871cd821a37c6cd514a5c84486747d77f9"] = { spot = "giants", city = "ramtops", },
+    ["4df97d469d5d3ad097fb6e06b122f96521557387"] = { spot = "giants", city = "ramtops", },
+    ["8cb5e2c6c0ac116cfe69cfefa73a035ad9ea9ec7"] = { spot = "giants", city = "ramtops", },	
+	--Grflx, Skund Forest
+    ["890966c6b2b690fc1b04749a7bf9d04eca29dcec"] = { spot = "grflx", city = "skund_forest", },
+    ["e2817d1202329e6b28a62e186e95e53f07657c5e"] = { spot = "grflx", city = "skund_forest", },
+    ["a914b6c578b073a83ab576d2a94d2189cbfedb6f"] = { spot = "grflx", city = "skund_forest", },
+    ["f5cb49ea1b91109f23a450e5ee3fcea0fa1cc35d"] = { spot = "grflx", city = "skund_forest", },
+    ["24ed39fb0af9cd0da4b980dc2a56de999f45fae6"] = { spot = "grflx", city = "skund_forest", },
+    ["0eaedb668455879efeefa4b233646d77e8c4d500"] = { spot = "grflx", city = "skund_forest", },
+    ["d278929fb3f77b719ffdaefbfe9a3c7c65778696"] = { spot = "grflx", city = "skund_forest", },
+    ["27b31ffd3a4b358080d8d6c48187e8fc9ec1a4e0"] = { spot = "grflx", city = "skund_forest", },
+    ["e08f754768a1e3de26fbdffdb6451bbe4d79d989"] = { spot = "grflx", city = "skund_forest", },
+    ["7021e3ec65c6c5cd9952f3a97e9da42e9d081567"] = { spot = "grflx", city = "skund_forest", },
+    ["eeef74a2b069cd43ed3358391fbccc954f0a281e"] = { spot = "grflx", city = "skund_forest", },
+    ["006d978ac31bc76d2901a1902168cc5e643fe8c9"] = { spot = "grflx", city = "skund_forest", },
+    ["45f563cddce6573cddc820dc8af80f9d36c2aadf"] = { spot = "grflx", city = "skund_forest", },
+    ["809191f8dfa16df24fe6a9d96d999a6e0136d32a"] = { spot = "grflx", city = "skund_forest", },
+    ["8e86aac23bf2d05f0c415ef24bb201dfe4cb7023"] = { spot = "grflx", city = "skund_forest", },
+    ["555b1f574260beeb4d9ab35db3c0323dd02dc9a4"] = { spot = "grflx", city = "skund_forest", },
+    ["d65e21333f1a4e138f6c456e85d56fa47239be44"] = { spot = "grflx", city = "skund_forest", },
+    ["af52cb6ddffa2330607ab239b8b0aa57fd4ebbc9"] = { spot = "grflx", city = "skund_forest", },
+    ["0b64f86efb205055d85f9f0336ba179ab8065865"] = { spot = "grflx", city = "skund_forest", },
+    ["6be56e360894c4341f79bd5caddc540561022dd2"] = { spot = "grflx", city = "skund_forest", },
+    ["c6ef0568ecd799196d77836352d0f3dfbccf168d"] = { spot = "grflx", city = "skund_forest", },
+    ["98131c7d5803c27611ff2a8dcd3697127b56ba96"] = { spot = "grflx", city = "skund_forest", },
+    ["e1e0afc2c65970ca67602f8349d8b37f96e0c17e"] = { spot = "grflx", city = "skund_forest", },
+    ["d5d76101137d8926cd2f2eaef6b1c4b1239b238e"] = { spot = "grflx", city = "skund_forest", },
+    ["255480501cab2282f57d1f8b36020fbf8de0d1e4"] = { spot = "grflx", city = "skund_forest", },
+    ["9a31c9ef4b6f89a6c87f752ee9c73a251dbf04fa"] = { spot = "grflx", city = "skund_forest", },
+    ["81c9cb66ea235701ca5b36404d3d25a657fe6b13"] = { spot = "grflx", city = "skund_forest", },
+    ["f7a0c67b412ef21acb6e4647df124b1576043d3c"] = { spot = "grflx", city = "skund_forest", },
+    ["d73c3f706c6f1839c94af1a2271d4faa5b7318be"] = { spot = "grflx", city = "skund_forest", },
+    ["a1511e4ca8a70d93d551347494fc97ce2da41c62"] = { spot = "grflx", city = "skund_forest", },
+    ["72019ab24d167fe86b553234428d611d440241b5"] = { spot = "grflx", city = "skund_forest", },
+    ["aa5d3cfcb0ad8df1e4737d8c5e2d8151cf8acb86"] = { spot = "grflx", city = "skund_forest", },
+    ["de4e8ed869fd0d6a6795fe5ed504e3c3400946eb"] = { spot = "grflx", city = "skund_forest", },
+    ["5406e564343fda9a97d5f27255baa04e2ab44a5f"] = { spot = "grflx", city = "skund_forest", },
+    ["fcc311043aeff5941e612d01f9141ca53a70fc32"] = { spot = "grflx", city = "skund_forest", },
+    ["9c6da28cd342030de373338ea92bc74af9624166"] = { spot = "grflx", city = "skund_forest", },	
+      } -- end of consider_messages
+
+function CheckRoom()
+
+end
+
+local IAC, SB, SE, DO = 0xFF, 0xFA, 0xF0, 0xFD
+local GMCP      = 201
+local GMCPDebug = tonumber(GetVariable("GMCPDebug")) or 0
+
+function gmcpdebug(name, line, wildcards)
+   newval = tonumber(wildcards[1])
+   if not newval or newval > 2 or newval < 0 then
+      ColourNote("darkorange", "", "GMCPDebug valid values are: 0 - off, 1 - simple, 2 - verbose")
+      return
+   end
+   GMCPDebug = newval
+   local msg = "off"
+   if GMCPDebug == 1 then
+      msg = "simple"
+   elseif GMCPDebug == 2 then
+      msg = "verbose"
+   end
+   ColourNote ("darkorange", "", "GMCPDebug: " .. msg)
+end
+ 
+---------------------------------------------------------------------------------------------------
+-- Mushclient callback function when telnet SB data received.
+---------------------------------------------------------------------------------------------------
+function OnPluginTelnetSubnegotiation (msg_type, data)
+
+   if msg_type ~= GMCP then
+      return
+   end -- if not GMCP
+  
+   -- debugging
+   if GMCPDebug > 0 then 
+     ColourNote ("darkorange", "", data) 
+   end
+
+   message, params = string.match (data, "([%a.]+)%s+(.*)")
+  
+   -- if valid format, broadcast to all interested plugins
+   if message then
+	  GetGMCPData(data)
+   end -- if
+   
+end -- function OnPluginTelnetSubnegotiation
+
+-- Actually send a GMCP packet to the MUD (has to be packaged up specially)
+function Send_GMCP_Packet (sPacketData)
+  assert (sPacketData, "Send_GMCP_Packet passed a nil message.")
+  SendPkt (string.char (IAC, SB, GMCP) .. (string.gsub (sPacketData, "\255", "\255\255")) .. string.char (IAC, SE))
+end -- Send_GMCP_Packet
+
+function OnPluginTelnetRequest (msg_type, data)
+   if msg_type == GMCP and data == "WILL" then
+      return true
+   end -- if
+  
+   if msg_type == GMCP and data == "SENT_DO" then
+      Note ("Enabling GMCP.") 
+      -- This hard-coded block may need to be made into a config table as we add more message types.
+      Send_GMCP_Packet (string.format ('Core.Hello { "client": "MUSHclient", "version": "%s" }', Version()))
+--      Send_GMCP_Packet ('Core.Supports.Set [ "Char 1", "Comm 1", "Room 1" ]')
+      local sSupports = '"room.info"'
+      sSupports = sSupports .. ', "room.map"'
+      sSupports = sSupports .. ', "room.writtenmap"'
+      sSupports = sSupports .. ', "char.vitals"'
+      sSupports = sSupports .. ', "char.info"'	  
+      --Note('Core.Supports.Set [ ' .. sSupports .. ' ]')
+      Send_GMCP_Packet ('Core.Supports.Set [ ' .. sSupports .. ' ]')
+      return true
+   end -- if GMCP login needed (just sent DO)
+
+   return false
+end -- function OnPluginTelnetRequest
+
+require "tprint"
+require "json"
+---End GMCP stuff
+
+CharVitals = {}
+function gotCharacterVitals (info)
+--  ColourNote("red", "", "GMCP!")
+	CharVitals = info
+	if LeadingStats["xp"] == nil and CharVitals.xp ~= nil then
+		LeadingStats["xp"] = CharVitals.xp
+	end
+		
+--	ColourNote("yellow", "", "XP: " .. CharVitals.xp)
+  --tprint (RoomInfo)
+end  -- gotCharacterVitals
+
+RoomInfo = {}
+LoggedRooms = {}
+function gotRoomInfo (info)
+--  ColourNote("red", "", "GMCP!")
+	RoomInfo = info
+	if RoomInfo.identifier == nil then return end
+	for k, v in pairs (RoomIDs) do
+		Known = string.match (RoomInfo.identifier, k)
+    
+		if Known then
+--			ColourNote ("deeppink", "", "ROOM KNOWN: " .. v.spot .. " City: " .. v.city )
+			break
+		end -- if
+    end -- for
+  --ColourNote("deeppink", "", "    \[\"" .. RoomInfo.identifier .. "\"\] = { spot = \"\", city = \"\", },")
+  if ToLog == true then
+	for i, v in ipairs (LoggedRooms) do
+--		Note(v)
+--		t = string.match(v, RoomInfo.identifier)
+--		Note(tostring(t))
+		if string.match(v, RoomInfo.identifier) ~= nil then
+			return
+		end
+	end
+	--table.insert(LoggedRooms, "    \[\"" .. RoomInfo.identifier .. "\"\] = { spot = \"".. SpotName .. "\", city = \""..CityName.."\", },")
+	table.insert(LoggedRooms, "    \[\"" .. RoomInfo.identifier .. "\"\] = \"".. SpotName .. "\",")
+	Note("Room added to '".. SpotName .. "'!")
+  end
+		
+
+  --tprint (RoomInfo)
+end  -- gotRoomInfo
+
+CharInfo = {}
+function gotCharacterInfo (info)
+  --ColourNote("red", "", "Got CharacterInfo!")
+	CharInfo = info
+	if CharInfo["name"] ~= nil then
+		sMyName = string.lower(CharInfo.name)
+		ColourNote("chartreuse", "black", "GroupMate: Name for GroupMate is '"..string.upper(sMyName).."'.")
+		for i, v in ipairs (sCharNames) do
+		if string.lower(v) == string.lower(sMyName) then return end
+		end
+		table.insert(sCharNames, string.lower(sMyName))
+	end
+		
+--	ColourNote("yellow", "", "Name: " .. CharInfo.name)
+  --tprint (CharInfo)
+end  -- gotCharacterInfo
+
+handlers = {
+  ["char.info"]           = gotCharacterInfo,
+  ["char.vitals"]           = gotCharacterVitals,
+  ["room.info"]           = gotRoomInfo,
+  } -- end of handlers
+
+function GetGMCPData(text)
+   -- pull out GMCP message, plus the data belonging to it
+   message, params = string.match (text, "([%a.]+)%s+(.*)")
+  
+   -- no match? oops!
+   if not message then
+      return
+   end -- if
+           
+   -- ensure we have an array or object
+   if not string.match (params, "^[%[{]") then
+      params =  "[" .. params .. "]"  -- JSON hack, make msg first element of an array.
+   end -- if 
+   
+   -- decode it
+   result = assert (json.decode (params))
+   
+   -- debugging
+   --ColourNote ("yellow", "", "GMCP: " .. message)
+   --Note("Message: " .. message)
+   --tprint(result)
+   
+   -- find a handler for this message type
+   local handler = handlers [message:lower ()]
+   
+   -- warn if not found
+   if not handler then
+--     ColourNote ("red", "", "Warning: No handler for: " .. message)
+     return
+   end -- no handler
+   
+   -- call the handler, pass in whatever we got
+   handler (result)
+
+end
+
+--[[Leader change
+
+The smiling mugger (hiding) snatches a blackened katana from Erohin and makes a run for it.
+The smiling mugger (hiding) disappears into the gloom.
+
+
+You notice a sassy mugger (hiding) nearby.
+The sassy mugger (hiding) and Kalliades struggle briefly over Death Star before the sassy mugger (hiding) wrests it free and makes for a hasty retreat.
+
+[dontask] S
+[dontask] The current leader has left the group.  A new leader will be chosen randomly.
+You automatically accept the request to follow you from Sense Deca.
+You automatically accept the request to follow you from TaleS.
+You are already following everyone in the group and they are following you, or no one you wanted to follow is here.
+[dontask] You are now the leader of the group.
+[Kyja leaves Discworld]
+Your red-speckled black spider gnashes its mandibles audibly.
+gs assists
+[dontask] Reva: assists
+{+5135 XP} 
+w
+Sense Deca and TaleS arrive from the east.
+Sense Deca and TaleS precede you.
+Short Street outside Brother David's [n,s,e].
+TaleS and Sense Deca are standing here.
+
+The giant grabs hold of you and roughly lifts you up into his hands, chuckling horribly.  With an evil grin, he lifts you over his head, and throws you over the side of the mountain!
+[hurtling towards the ground]
+
+You suddenly spot Dagon Fallstar attempting to filch Death Grip from you but manage to protect your possessions.
+
+]]--
+]]>
+</script> 
+<!--  Triggers  -->
+<triggers> 
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Welcome to Discworld: the stuff of which dreams are made\.$"
+   regexp="y"
+   script="NewLogon"
+   name="DetectNewLogon"
+   sequence="39"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^\[.+\] (?P<groupmate>\w+): yoreva$"
+   regexp="y"
+   script="YoYou"
+   name="GroupAttention"
+   sequence="38"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\[.+\] (?P<groupmate>\w+): (?P<chat>.+)$"
+   regexp="y"
+   script="GroupChat"
+   name="GroupChat"
+   sequence="39"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^\[(?P<name>Kimya|Avenged) (?P<dir>enters|leaves) Discworld"
+   regexp="y"
+   ignore_case="y"
+   script="LogonTalk"
+   name="LogonTalk"
+   sequence="39"
+  >
+  </trigger>
+
+  <!-- CCC Type 1 for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Your? (?>feel your skin become (?>rock hard|elastic as rubber)|skin (?>feels (?>even harder now|much more elastic now)|is now as (?>hard|elastic|thickly covered) as it can get))\.$"
+   regexp="y"	
+   sequence="12"
+   script="ShieldNotify"
+   name="CCC_Up_Me"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(The metallic network on your skin feels a fair bit stronger now|Your skin feels much harder now)\.$"
+   regexp="y"	
+   sequence="12"
+   script="ShieldNotify"
+   name="CCC_Strengthened_Me2"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Your skin feels itchy; large pieces flake off as you scratch it\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="CCC_Down_Me"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?With a brief flash of magic, your (?>metallic|stony|elastic) skin falls away\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="CCC_Down_Me2"
+  >
+  </trigger>
+
+  <!-- TPA for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?With a noise that sounds like &quot;Plink!&quot;, everything around you flashes (?>yellow|red) for a moment\.$"
+   regexp="y"	
+   sequence="12"
+   script="ShieldNotify"
+   name="TPA_Up_Me"
+   group="shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?There is a sudden white flash\. ? Your magical shield has broken\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify	"
+   name="TPA_Down_Me"
+   group="shields"
+  >
+  </trigger>
+  <!-- Bugs for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?(?>Buzzing drowsily, t|Buzzing loudly, t|Buzzing threateningly, t|Clicking and buzzing, t|Whirring gently, t|Rather clumsily, t|With a rasping noise, t|With a high-pitched whining noise, t|With a low, menacing buzzing, t|With a buzzing sound so loud and meaty it's almost like a dog growling, t|T)he (?>handful|cloud|small swarm|large swarm|vast swarm|plague) of (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|termites|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) (?>flutters into a loosely-formed orbit around |forms a chaotic web of small white bodies around |starts to hover near |begins to circle |begins to circle around |begins to orbit |begins to cluster around |begins to buzz erratically around |begins to buzz around |flutters into a chaotic formation around )you\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="Bugs_Up_Me"
+   group="shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?(?>Buzzing drowsily, |Buzzing loudly, |Buzzing threateningly, |Clicking and buzzing, |Whirring gently, |Rather clumsily, |With a rasping noise,|With a high-pitched whining noise,|With a low, menacing buzzing,|With a buzzing sound so loud and meaty it's almost like a dog growling, )?(t|T)he (?>handful|cloud|small swarm|large swarm|vast swarm|plague) of (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|termites|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) forms a chaotic web of small white bodies around you\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="Bugs_Up_Me2"
+   group="shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?The (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|termites|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) surrounding you scatter in different directions and fly off\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="Bugs_Down_Me"
+   group="shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?The last of the injured (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|termites|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) surrounding you crash to the ground\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="Bugs_Down_Me2"
+   group="shields"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^NEEDSTO BEREDONE!!(?:> )?You are protected by the power of (?>Pishe|Gufnork|Gapp|Sandelfon|Fish|Hat|Sek|Aegadon|Cubal|Reebox)\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="MS_Up_Me"
+   group="shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?Your divine protection expires\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="MS_Down_Me"
+   group="shields"
+  >
+  </trigger>
+  <!-- EFF for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?(?P<effitem>(?:\w+\b\W*?){1,6}) begins to float around you\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="EFF_Up_Me"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?In blocking the attack (?P<effitem>(?:\w+\b\W*?){1,6}) floating around you is knocked out of orbit\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="EFF_Down_Me"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?You realise that (?P<effitem>(?:\w+\b\W*?){1,6}) is no longer floating around you\.$"
+   regexp="y"
+   sequence="12"
+   script="ShieldNotify"
+   name="EFF_Down_Me2"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?In blocking the attack (?P<effitem>(?:\w+\b\W*?){1,6}) floating around you is knocked out of orbit\.$"
+   regexp="y"
+   sequence="12"
+   script="FallingFloaterYou"
+   name="FallingFloaterYou"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?:> )?You realise that (?P<effitem>(?:\w+\b\W*?){1,6}) is no longer floating around you\.$"
+   regexp="y"
+   sequence="12"
+   script="FallingFloaterYou"
+   name="FallingFloaterYou2"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   match="^In blocking the attack (?P<effitem>(?:\w+\b\W*?){1,6}) floating around (?!You)(?P<name>.+) is knocked out of orbit\.$"
+   regexp="y"
+   sequence="12"
+   script="FallingFloaterOther"
+   name="FallingFloaterOther"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^As (?P<petname>.+) dies, your mind reels in panic, storing every last detail of their existence in an orgy of denial\.  Perhaps a priest can help you to recover your lost love\?$"
+   regexp="y"	
+   sequence="12"
+   script="PetDeathNotify"
+   name="PetDeath"
+  >
+  </trigger>  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] By the power vested in (?<oldleader>\w+), (?<newleader>\w+) has been appointed as the new leader of the group\.$"
+   regexp="y"
+   sequence="12"
+   script="LeaderChange"
+   name="GroupLeadChange"
+   group="group"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] The current leader has left the group\.  A new leader will be chosen randomly\.$"
+   regexp="y"
+   sequence="12"
+   script="GroupLeaderLeft"
+   name="GroupLeaderLeft"
+   group="group"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^\[.+\] You have joined the group\.$"
+   regexp="y"
+   sequence="12"
+   script="GroupJoin"
+   name="GroupJoin"
+   group="group"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^You sail past .+, flying over the side of the mountain in the process!$"
+   regexp="y"
+   sequence="12"
+   omit_from_output="y"
+   script="GiantThrow"
+   name="GiantThrow"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] (?P<groupmate>\w+).+begins keeping a close eye on (?P<groupmate2>\w+)(?: .+)?\.$"
+   regexp="y"
+   sequence="12"
+   script="AssistStart"
+   name="AssistChange"
+   group="group"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   omit_from_output="n"
+   match="^(?!A small chamber)[a-zA-Z \']+\[[a-z119, ]+\]\.$"
+   regexp="y"
+   name="LeaveSpot"
+   script="LeaveSpot"
+   sequence="100"
+  >  
+  </trigger>  
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^On the surface of a large pond \[out.*\]\.$|^\[on the surface of a large pond\]$"
+   regexp="y"
+   sequence="12"
+   script="EnterCrocs"
+   name="EnterCrocs"
+   group="spot"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^(?P<crocs>.+) moves? aggressively towards you!$"
+   regexp="y"
+   sequence="12"
+   script="CountCrocs"
+   name="CountCrocs"
+   group="spot"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Somewhere in the Shades \[[1-8,]+(?:enter door)?\]\.$"
+   regexp="y"
+   sequence="12"
+   script="EnterShades"
+   name="EnterShades"
+   group="spot"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^A dingy tunnel \[(none|d)\]\.$"
+   regexp="y"
+   sequence="12"
+   script="EnterSmugglers"
+   name="EnterSmugglers"
+   group="spot"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Somewhere in an alleyway \[[nesw,]+(?:enter door)?\]\.$"
+   regexp="y"
+   sequence="12"
+   script="EnterMedina"
+   name="EnterMedina"
+   group="spot"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^The Snail \[[nesw,]+(?:enter door)?\]\.$"
+   regexp="y"
+   sequence="12"
+   script="EnterSnail"
+   name="EnterSnail"
+   group="spot"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^Needful Things \[bw(?:,enter door)?\]\.$"
+   regexp="y"
+   sequence="12"
+   script="EnterGnus"
+   name="EnterGnus"
+   group="spot"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Two citadel guards are standing on guard"   
+   regexp="y"
+   sequence="12"
+   script="EnterCits"
+   name="EnterCits"
+   group="spot"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^\[.+\] (?P<groupmate>\w+): port(?: (?P<place>.+))?$"
+   regexp="y"
+   sequence="12"
+   script="GroupPort"
+   name="GroupPort"
+   group="spot"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^You struggle to leave \w+, but you can't make any headway in the turbulent waters\.|^You're too (?:weary|tired|fatigued|exhausted) to swim \w+ at the moment\.$"
+   regexp="y"
+   sequence="12"
+   name="SwimFail"
+   group="spot"
+   send_to="12"   
+  >
+  <send>
+	talk:Speak ("Swim Fail", 1)
+	GMNote("Swim Fail.")
+  </send>
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^Some other priests and priestesses rush over to assist the one that caught you\.  Heaving you up across the shoulders of the strongest members, they carry you off toward the gates\.$"
+   regexp="y"
+   sequence="12"
+   name="DJBPriestThrow"
+   group="spot"
+   send_to="12"   
+  >
+  <send>
+	talk:Speak ("Crocced by Priests", 1)
+	GMNote("Crocced by Priests.")
+  </send>
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?P<name>\w+).* sails past .+, flying over the side of the mountain in the process\.$"
+   regexp="y"
+   sequence="12"
+   name="GiantThrowOther"
+   group="spot"
+   send_to="12"   
+  >
+  <send>
+	talk:Speak ("%1 Thrown by giants", 1)
+	GMNote("%1 thrown by giants.")
+  </send>
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="*"
+   sequence="12"
+   omit_from_output="y"
+   script="AddTimeStamp"
+   name="TimeStamp"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="(?P<name>\w+).* juggles around (?:his|her|its) stuff and fumbles (?P<item>.+?)\.$"
+   regexp="y"
+   sequence="100"
+   script="OtherFumble"
+   name="OtherFumble"
+  >
+  </trigger>
+
+  <trigger
+   custom_colour="4"
+   enabled="y"
+   keep_evaluating="y"
+   match="^Whoops!  You tried to carry too many things and fumbled (?P<item>.+?)\.$"
+   regexp="y"
+   sequence="100"
+   script="YouFumble"
+   name="YouFumbl2"
+  >
+  </trigger>
+  <trigger
+   custom_colour="4"
+   enabled="y"
+   keep_evaluating="y"
+   match="Oops, butterfingers, you have dropped (?P<item>.+?)\.$"
+   regexp="y"
+   sequence="100"
+   script="YouFumble"
+   name="YouFumble2"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="(?:\w )+\[[1-9a-z, ]+\]\."
+   regexp="y"
+   sequence="100"
+   script="CaptureRoomBrief"
+   name="CaptureRoomBrief"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?!\[.+] \w+\:)(?P<thief>.+?) (?:\(hiding\) )?grabs (?P<item>.+?)(?: from you)?\.  You struggle briefly but (?:.+?) wrests it from your grip and makes for a hasty retreat\.$"
+   regexp="y"
+   sequence="100"
+   script="SnatchedYou"
+   name="SnatchedYou"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?!\[.+] \w+\:)(?P<thief>.+?) (?:\(hiding\) )?and (?P<name>\w+).* struggle briefly over (?P<item>.+) before .+ wrests it free and makes for a hasty retreat\.$"
+   regexp="y"
+   sequence="100"
+   script="SnatchedOther"
+   name="SnatchedOther"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^(?!\[.+] \w+\:)(?P<thief>.+?) (?:\(hiding\) )?(?:suddenly )?snatches (?P<item>.+) from (?P<name>\w+).* and makes a run for it\.$"
+   regexp="y"
+   sequence="100"
+   script="SnatchedOther"
+   name="SnatchedOther2"
+  >
+  </trigger>
+  
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^As the (?P<thief>.+) dies he drops (?P<item>.+) in shock\.$"
+   regexp="y"
+   sequence="100"
+   script="DropSnatched"
+   name="DropSnatched"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^(?P<name>\w+).* (?:buries|bury) (?P<corpses>.+) deep within the ground\.$"
+   regexp="y"
+   sequence="12"
+   script="CountCorpses"
+   name="CountCorpses"
+   group="spot"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^(?P<name>\w+).* (?:tidies|tidy) up the place, clearing away (?P<corpses>.+).$"
+   regexp="y"
+   sequence="12"
+   script="CountCorpses"
+   name="CountCorpses2"
+   group="spot"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   omit_from_output="y"
+   match="^Queued command\: group say \%\^\#FFFE00\%\^\..*\%\^RESET\%\^$"
+   regexp="y"
+   name="GagGroupTalk"
+   sequence="100"
+  >  
+  </trigger>  
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^The Imperial guard exclaims in Agatean with a Bes Pelargic accent: I think it is only fair to warn you that the Bes Pelargic arms permit is about to expire, (?P<name>\w+).*\.  However, your permit is valid for the moment!$"
+   regexp="y"
+   sequence="12"
+   name="PermitExpiringWarning"
+   send_to="12"   
+  >
+  <send>
+	if iLastPermitWarning == nil or os.difftime (os.time (), iLastPermitWarning) > 30 * 60 then
+		iLastPermitWarning = os.time()
+		if "%1" == sMyName then
+			talk:Speak ("Your permit expiring.", 1)
+			GMNote("Your permit is expiring!")
+		else
+			talk:Speak ("%1's permit expiring.", 1)
+			GMNote("%1's permit is expiring!")
+		end
+	end
+  </send>
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="\b(Mell|Turnerette)\b"
+   regexp="y"
+   sequence="12"
+   ignore_case="y"
+   name="PKWarning"
+   send_to="12"   
+  >
+  <send>
+	if iLastNameWarning == nil or os.difftime (os.time (), iLastNameWarning) > 5 then
+		iLastNameWarning = os.time()
+		talk:Speak ("%1 spotted!", 1)
+		GMNote("%1 spotted!")
+	end
+  </send>
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="\b(Spanish)\b"
+   regexp="y"
+   sequence="12"
+   ignore_case="y"
+   name="PKWarningII"
+   send_to="12"   
+  >
+  <send>
+	if iLastNameWarning == nil or os.difftime (os.time (), iLastNameWarning) > 5 then
+		iLastNameWarning = os.time()
+		talk:Speak ("%1 spotted!", 1)
+		GMNote("%1 spotted!")
+	end
+  </send>
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\[(\w+) enters Discworld -- CONTRACT ?\]$"
+   regexp="y"
+   sequence="12"
+   ignore_case="y"
+   name="ContractWarning"
+   send_to="12"   
+  >
+  <send>
+		talk:Speak ("Contract, %1 logged!", 1)
+		GMNote("Contract, %1 logged!")
+  </send>
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^Your feet touch the ground again\.$"
+   regexp="y"
+   sequence="12"
+   ignore_case="y"
+   name="EndOfFloat"
+   send_to="12"   
+  >
+  <send>
+		talk:Speak ("End of float", 1)
+		GMNote("End of Floating!")
+  </send>
+  </trigger>
+  </triggers>
+  
+<timers>
+</timers>
+</muclient>

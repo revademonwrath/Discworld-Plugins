@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- Coin Interpreter by Reva                                    -->
+<!-- Specs: Adds simple dollar value at the end of Fence offer.   -->
+<!--        Display session total earned including current offer. -->
+<!--        Add $ Value to Purse in Inventory.                    -->
+
+<muclient>
+<plugin
+   name="RevaCoinConverter"
+   author="Reva"
+   id="f445bedff436a4a429c562c4"
+   language="Lua"
+   purpose="Convert Coin Info to $"
+   date_written="2020-02-05"
+   save_state="y"
+   requires="4.84"
+   version="2.1"
+   >
+</plugin>
+<script>
+<![CDATA[
+cText = "white"
+cBackground = "black"
+cLowColour = "white"
+cMediumColour = "dodgerblue"
+cHighColour = "limegreen"
+
+--Values to show colour on fence offer
+iMediumValue = 50
+iHighValue = 100
+
+--Full to show each coin value, brief to just show total at the end
+sPurseShow = "full"
+if GetVariable("sPurseShow") ~= nil then
+	--Note("Loading saved...")
+	sPurseShow = GetVariable("sPurseShow")
+end
+cPurseValueColour = "dodgerblue"
+if GetVariable("cPurseValueColour") ~= nil then
+	--Note("Loading saved...")
+	cPurseValueColour = GetVariable("cPurseValueColour")
+end
+
+function CIHelp()
+	ColourNote(cText, "", [[
+	Coin Interpreter v2.1, by Reva
+	* Display totals after fence offer.
+	* Display totals of coins in your purse.
+	
+	Commands:
+	'ci help' - this help screen.
+	'[fence ]total reset' - reset total value received from fencing.
+	'ci purse (full\brief)' - 'full' to display values after each coin type in purse, 'brief' to only show total at the end.
+	'ci purse colour (colour name)' - change colour for values shown in purse.
+	]])
+end
+
+CoinValuesByCity = {
+["Agatean Empire"] = {["saveloy-rhinu"] = 4, ["quarter-rhinu"] = 120, ["half-rhinu"] = 240, ["rhinu"] = 480, ["ten-rhinu"] = 4800, ["fifty-rhinu"] = 24000},
+["Ankh-Morpork"] = {["penny"] = 4, ["pence"] = 4, ["ten-pence"] = 40, ["half-dollar"] = 200, ["dollar"] = 400, ["ten-dollar"] = 4000, ["royal"] = 40000, ["crown"] = 3200000},
+["Djelian"] = {["ptascp"] = 2, ["ptascpi"] = 2, ["talon"] = 20, ["talona"] = 20, ["toon"] = 200, ["tooni"] = 200, ["talent"] = 2000, ["ra"] = 20000, ["thanra"] = 100000},
+["Ephebian"] = {["derechmus"] = 2, ["derechmi"] = 2, ["hemiobolus"] = 8, ["hemioboli"] = 8, ["obolus"] = 16, ["oboli"] = 16, ["drachma"] = 96, ["drachmae"] = 96, ["stater"] = 192, ["decadrachma"] = 960, ["decadrachmae"] = 960, ["mina"] = 9600, ["minae"] = 9600, ["tyrant"] = 96000},
+["Genuan"] = {["cent"] = 3, ["livre"] = 300, ["forin"] = 3000, ["ducat"] = 30000},
+["Klatchian"] = {["para"] = 5, ["two para"] = 10, ["five para"] = 25, ["ten para"] = 50, ["fifty para"] = 250, ["dinar"] = 500, ["two dinar"] = 1000, ["five dinar"] = 2500, ["ten dinar"] = 5000, ["fifty dinar"] = 25000, ["hundred dinar"] = 50000, ["thousand dinar"] = 500000, ["toman"] = 5000000},
+["Lancre"] = {["farthing"] = 3, ["ha'penny"] = 6, ["ha'pennies"] = 6, ["penny"] = 12, ["pennies"] = 12, ["tuppence"] = 24, ["thruppence"] = 36, ["sixpence"] = 72, ["shilling"] = 144, ["crown"] = 1728, ["tencrown"] = 17280, ["sovereign"] = 20736, ["hedgehog"] = 248832},
+["Tsorte"] = {["para"] = 3, ["five para"] = 15, ["ten para"] = 30, ["five akche"] = 35, ["ten akche"] = 70, ["fifty para"] = 150 , ["kuru"] = 300, ["fifty akche"] = 350, ["dinar"] = 700, ["ten kuru"] = 3000, ["five dinar"] = 3500, ["ten dinar"] = 7000, ["lira"] = 30000, ["talent"] = 70000, ["ten lira"] = 300000, ["ten tyrant"] = 700000},
+}
+
+function OnPluginSaveState ()
+	SetVariable("sPurseShow", sPurseShow)
+	SetVariable("cPurseValueColour", cPurseValueColour)
+end -- function OnPluginSaveState
+
+function ParseFenceOffer(sString, sReturnCity, sReturnCoins)
+	if sReturnCity == nil then sReturnCity = "Ankh-Morpork" end
+	if sReturnCoins == nil then sReturnCoins = "dollar" end
+	local sWord = {}
+	local iValue = 0
+
+	local sEndMatch = "(%d+ .+) and (%d+ .+)"
+	if string.match(sString, ",") ~= nil then
+		sEndMatch = ", " .. sEndMatch
+	end
+
+	sSecondToLast, sLast = string.match(sString, sEndMatch)
+
+	if sSecondToLast ~= nil and sLast ~= nil then
+		sString = string.sub(sString, 1 , string.len(sString) - (string.len(sSecondToLast) + string.len(sLast)) + 5)
+	else
+		table.insert(sWord, sString)
+	end
+
+	for k in string.gmatch(sString,'%d+ .-,') do 
+		table.insert(sWord, string.sub(k, 1, string.len(k)-1)) 
+	end
+
+	if sSecondToLast ~= nil and sLast ~= nil then
+		table.insert(sWord, sSecondToLast)
+		table.insert(sWord, sLast)
+	end
+	
+	
+	for _, v in ipairs(sWord) do
+		local bMatched = false
+		for City, _ in pairs (CoinValuesByCity) do
+			for Coin, __ in pairs (CoinValuesByCity[City]) do
+				local sMatchString = "(%d+) ("..City..") (" .. Coin .. ")s?"
+				sMatchString = string.gsub(sMatchString, "%-", "%%-")
+				
+
+				iThisAmount, sThisCity, sThisCoinType = string.match(v, sMatchString)
+				if iThisAmount ~= nil and sThisCity ~= nil and sThisCoinType ~= nil then
+					bMatched = true
+					iValue = iValue + (CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
+					break
+				end
+			end
+		end
+		if bMatched == false then
+			--Note("Unmatched currency '".. v .. "', stoppping.")
+			return "error"
+		end
+	end
+	return tonumber(string.format("%.2f", iValue / CoinValuesByCity[sReturnCity][sReturnCoins]))
+end
+
+iTotal = 0
+function CaptureFenceOffer (sName, sLine, wildcards, styles)
+	local sOffer = ParseFenceOffer(wildcards.money, "Ankh-Morpork", "dollar") or "error"
+	for _, v in ipairs (styles) do
+		ColourTell(RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end
+	if sOffer ~= "error" then
+		local cNoteColour = cLowColour
+		if sOffer >= iHighValue then
+			cNoteColour = cHighColour
+		elseif sOffer >= iMediumValue then
+			cNoteColour = cMediumColour
+		end
+		if iTotal ~= 0 then
+			iTotal = iTotal + tonumber(sOffer)
+			iLastAdded = tonumber(sOffer)
+			ColourNote(cNoteColour, "", " [A$" .. AddCommas(sOffer) .. " (Total: A$"..AddCommas(iTotal)..")]") 
+		else
+			ColourNote(cNoteColour, "", " [A$" .. AddCommas(sOffer) .. "]") 
+			iTotal = iTotal + tonumber(sOffer)
+			iLastAdded = tonumber(sOffer)
+		end
+	else
+		Note("")
+	end
+end
+
+function FenceNotAccepted (sName, sLine, wildcards, styles)
+	if iTotal ~= 0 and iLastAdded ~= nil then
+		iTotal = iTotal - iLastAdded
+		if iTotal < 0 then
+			iTotal = 0
+		end
+	end
+end
+
+
+iPurseTotal = 0
+function CapturePurseContents (sName, sLine, wildcards, styles)
+	--Add conversion values and send to client
+	sPurse, iPurseTotal = RedoPurse(wildcards.coins, "Ankh-Morpork", "dollar")
+	
+	--If unrecognized currency will just replace the purse line
+	if iPurseTotal == -1 then
+		for _, v in ipairs (styles) do
+			ColourTell(RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end
+		Note("")
+		return
+	end
+		
+	if #sPurse > 1 then
+		ColourTell(cText, "", "Your purse contains ")
+		for i, v in ipairs (sPurse) do
+			if i < #sPurse - 1 then
+				if sPurseShow == "full" then
+					ColourTell(cText, "", v[1])
+					if v[2] ~= nil then
+						ColourTell(cPurseValueColour, "", "[$" .. v[2] .. "]")
+					end
+					ColourTell(cText, "", ",")
+				else
+					ColourTell(cText, "", v[1] .. ",")
+				end
+			elseif i == #sPurse - 1 then
+				if sPurseShow == "full" then
+					ColourTell(cText, "", v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
+					if v[2] ~= nil then
+						ColourTell(cText, "", " and")
+					end
+				else
+					ColourTell(cText, "", v[1] .. " and ")
+				end
+			else
+				if sPurseShow == "full" then
+					ColourTell(cText, "", v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
+					if v[2] ~= nil then
+						ColourTell(cText, "", ".")
+					end
+				else
+					ColourTell(cText, "", v[1] .. ".")
+				end
+				ColourNote(cPurseValueColour, "", " [Total: $" .. iPurseTotal .. "]")
+			end
+		end
+	else
+		ColourTell(cText, "", "Your purse contains ".. sPurse[1][1])
+		if sPurse[1][2] ~= nil then
+			ColourTell(cPurseValueColour, "",  "[$" .. sPurse[1][2] .. "]")
+		end
+		ColourNote(cText, "", ".")
+	end
+end
+
+--[[
+Your purse contains one Ankh-Morpork ten-dollar, 204 Ankh-Morpork dollars, 67 Ankh-Morpork half-dollars, 3 Agatean Empire ten-rhinu,
+ 222 Agatean Empire rhinu, 10 Djelian tooni, 6 Djelian talona, 46 Ephebian minae, 88 Ephebian decadrachmae, 209 Ephebian stater, 
+ 7 Ephebian drachmae, 37 Ephebian oboli, 4 Ephebian hemioboli and 16 Ephebian derechmi.
+ 
+^Your purse contains (?P<coins>.+)\.$
+]]--
+function RedoPurse(sString, sReturnCity, sReturnCoins)
+	if sReturnCity == nil then sReturnCity = "Ankh-Morpork" end
+	if sReturnCoins == nil then sReturnCoins = "dollar" end
+	local sWord = {}
+	local iValue = 0
+	local iTotal = 0
+
+	for k in string.gmatch(sString, '[^,]+') do
+		table.insert(sWord, k) 
+	end
+
+	sOne, sTwo = string.match(sWord[#sWord], '(.+) and (.+)')
+	if sOne ~= nil and sTwo ~= nil then
+		sWord[#sWord] = sOne
+		table.insert(sWord, sTwo)
+	end
+	--tprint(sWord)
+
+	local sReturnTable = {}
+	for i, v in ipairs (sWord) do
+		local bMatched = false
+		for City, _ in pairs (CoinValuesByCity) do
+			for Coin, __ in pairs (CoinValuesByCity[City]) do
+				local sMatchString = "(%d+) ("..City..") (" .. Coin .. ")s?"
+				sMatchString = string.gsub(sMatchString, "%-", "%%-")
+			
+				iThisAmount, sThisCity, sThisCoinType = string.match(v, sMatchString)
+				if iThisAmount ~= nil and sThisCity ~= nil and sThisCoinType ~= nil then
+					bMatched = true
+					iValue = CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount
+					iTotal = iTotal + CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount
+					sMatchedCity = sThisCity
+					sMatchedCoin = sThisCoinType
+					--Note("Coin value = " .. CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
+					--table.insert(sReturnTable, v .. "[$" .. ConvertValue(iValue, sReturnCity, sReturnCoins) .. "]")
+					--Note("R = " .. v .. "[$" .. AddCommas(ConvertValue(iValue, sReturnCity, sReturnCoins)) .. "]")
+					break
+				end
+
+				local sMatchString = "one ("..City..") (" .. Coin .. ")s?"
+				sMatchString = string.gsub(sMatchString, "%-", "%%-")
+
+				sThisCity, sThisCoinType = string.match(v, sMatchString)
+				if sThisCity ~= nil and sThisCoinType ~= nil then
+					iThisAmount = 1
+					bMatched = true
+					sMatchedCity = sThisCity
+					sMatchedCoin = sThisCoinType
+					iValue = CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount
+					iTotal = iTotal + CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount
+					--Note("Coin value = " .. CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
+					break
+				end
+			end
+		end
+
+		if bMatched == true then 
+			if sMatchedCity == sReturnCity and sMatchedCoin == sReturnCoins then
+				table.insert(sReturnTable, {v})
+				--Note("R = " .. v)
+			else
+				table.insert(sReturnTable, {v, ConvertValue(iValue, sReturnCity, sReturnCoins)})
+				--Note("R = " .. v .. "[$" .. AddCommas(ConvertValue(iValue, sReturnCity, sReturnCoins)) .. "]")
+			end
+		else
+			--Note("Unmatched currency '".. v .. "', stoppping.")
+			return -1, -1
+		end
+	end
+	return sReturnTable, AddCommas(ConvertValue(iTotal, sReturnCity, sReturnCoins))
+end
+
+function ConvertValue(iValue, sCity, sCoins)
+	return tonumber(string.format("%.2f", iValue / CoinValuesByCity[sCity][sCoins]))
+end
+
+function AddCommas(iNum) -- credit http://richard.warburton.it
+	local left,num,right = string.match(iNum,'^([^%d]*%d)(%d*)(.-)$')
+	return left..(num:reverse():gsub('(%d%d%d)','%1,'):reverse())..right
+end
+
+]]>
+</script> 
+<!--  Triggers  -->
+<triggers> 
+  <trigger
+   keep_evaluating="y"
+   omit_from_output="y"
+   enabled="y"
+   match="^(?P<fence>Dodgy Bill|Aristide Felon|Tiffany Glitter|Shifty Jim|Notorious Jones|Mariania|Ragman|Jak Raplin|Scrakkik|Sol|Klepton the Fixer|Elusive Adriano) whispers to you(?P<language>.+)?\: I'll give you (?P<money>.+) for (?P<item>.+), what do you think\?$"
+   regexp="y"
+   send_to="12"
+   name="FenceOffer"
+   sequence="15"
+   script="CaptureFenceOffer"
+  >
+  <send>
+  </send>
+  </trigger>
+  
+  <trigger
+   keep_evaluating="y"
+   enabled="y"
+   match="^(?P<fence>Dodgy Bill|Aristide Felon|Tiffany Glitter|Shifty Jim|Notorious Jones|Mariania|Ragman|Jak Raplin|Scrakkik|Sol|Klepton the Fixer|Elusive Adriano) returns the items? to you\.$"
+   regexp="y"
+   send_to="12"
+   name="FenceReturn"
+   sequence="15"
+   script="FenceNotAccepted"
+  >
+  <send>
+  </send>
+  </trigger>
+
+  <trigger
+   keep_evaluating="y"
+   enabled="y"
+   omit_from_output="y"
+   match="^Your purse contains (?P<coins>(?!only moths).+)\.$"
+   regexp="y"
+   send_to="12"
+   name="PurseCoins"
+   sequence="15"
+   script="CapturePurseContents"
+  >
+  <send>
+  </send>
+  </trigger>
+
+</triggers>
+<!--  Aliases  -->
+<aliases>
+		<alias
+            match="^ci purse(?: (full|brief))?$"
+			regexp="y"
+            enabled="y"
+            ignore_case="y"
+            sequence="30"
+			send_to="12"
+        >
+		<send>
+			if "%1" == nil or "%1" == "" then
+				ColourNote(cText, "", "Purse Contents is set to '" .. sPurseShow .. "'.")
+			else
+				if "%1" == sPurseShow then
+					ColourNote(cText, "", "Purse Contents is already set to '" .. sPurseShow .. "'.")
+				else
+					sPurseShow = "%1"
+					ColourNote(cText, "", "Purse Contents set to '" .. sPurseShow .. "'.")
+				end
+			end
+		</send>
+		</alias>
+		<alias
+            match="^ci purse colour(?: (.+))?$"
+			regexp="y"
+            enabled="y"
+            ignore_case="y"
+            sequence="30"
+			send_to="12"
+        >
+		<send>
+			if "%1" == nil or "%1" == "" then
+				ColourNote(cText, "", "Purse Contents Colour is set to '", cPurseValueColour, "", cPurseValueColour, cText, "", "'.")
+			else
+				if "%1" == sPurseShow then
+					ColourNote(cText, "", "Purse Contents Colour is already set to '", cPurseValueColour, "", cPurseValueColour, cText, "", "'.")
+				else
+					if ColourNameToRGB("%1") ~= -1 then
+						cPurseValueColour = "%1"
+						ColourNote(cText, "", "Purse Contents Colour set to '", cPurseValueColour, "", cPurseValueColour, cText, "", "'.")
+					else
+						ColourNote(cText, "", "'" .. "%1" .. "' is not a valid colour name.")
+					end
+				end
+			end
+		</send>
+		</alias>
+		<alias
+            match="^ci help$"
+			regexp="y"
+            enabled="y"
+            ignore_case="y"
+            sequence="30"
+			send_to="12"
+			script="CIHelp"
+        >
+		</alias>
+    <alias
+        match="^(fence )?total reset$"
+        regexp="y"
+        enabled="y"
+        ignore_case="y"
+        sequence="30"
+        send_to="12"
+    >
+    <send>
+        if iTotal ~= 0 then
+            iTotal = 0
+            Note("FENCE INTERPRETER: Reset total fence value.")
+        else
+            Note("FENCE INTERPRETER: No fence value recorded.")
+        end
+    </send>
+    </alias></aliases>
+</muclient>

@@ -1,0 +1,2109 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- ShieldMate, a miniwindow to display shields, by Reva -->
+<!-- Type "sm help" for the helpfile, right-click on the miniwindow for options -->
+<!-- Avaialble at: -->
+<!-- https://pastebin.com/NrH2tLM7 - copy to .xml file -->
+<!-- https://www.dropbox.com/s/rvvkexr2kulktqo/ShieldMate.xml?dl=0 - download -->
+<!-- For Text-to-speech warning download http://www.gammon.com.au/files/mushclient/lua5.1_extras/luacom.zip and place in the same -->
+<!-- directory as MUSHclient.exe -->
+
+<muclient>
+<plugin
+   name="ShieldMate"
+   author="Reva"
+   id="acbe534beda6ddc428c562c6"
+   language="Lua"
+   purpose="Shield Assistant"
+   date_written="2018-05-14"
+   date_modified="2019-06-03"
+   save_state="y"
+   requires="4.84"
+   version="1.2"
+   >
+</plugin>
+<script>
+<![CDATA[
+require "json"
+
+--Lines of players to show
+iMiniwindowLines = 6
+--Set how many seconds until the message fades completely to white
+iSecondsToWhite = 120
+--Set how many seconds to highlight new messages
+iHighlightTime = 15
+--Set how many seconds until underlined for old tpa (20 mins)
+iSecondsToUnderline = 60 * 20
+
+--RGB Colour values for colour fading
+--cWhite is slightly off #FFFFFF bec. white doesn't display right in miniwindows
+cGold = "#FFD700"
+cRed = "#FF0000"
+cLimegreen = "#32CD32"
+cLime = "#00FF00"
+cWhite = "#FEFFFF"
+cYellow = "#FFFF00"
+
+newWhite = "white"
+newBlack = "black"
+--Set to true for debug notes
+bDebug = false
+if GetVariable("bDebug") == "true" then
+	bDebug = true
+end
+
+bDisplayOld = true
+if GetVariable("bDisplayOld") == "false" then
+	bDisplayOld = false
+end
+
+bRecordCCCYou = false
+if GetVariable("bRecordCCCYou") == "true" then
+	bRecordCCCYou = true
+end
+
+bRecordCCCOther = false
+if GetVariable("bRecordCCCOther") == "true" then
+	bRecordCCCOther = true
+end
+
+bRecordMSYou = false
+if GetVariable("bRecordMSYou") == "true" then
+	bRecordMSYou = true
+end
+
+bRecordMSOther = false
+if GetVariable("bRecordMSOther") == "true" then
+	bRecordMSOther = true
+end
+
+bRecordSkeleton = false
+if GetVariable("bRecordSkeleton") == "true" then
+	bRecordSkeleton = true
+	iMiniwindowLines = iMiniwindowLines + 1
+end
+
+bRecordFruitbat = false
+if GetVariable("bRecordFruitbat") == "true" then
+	bRecordFruitbat = true
+	iMiniwindowLines = iMiniwindowLines + 1
+end
+
+function AddTextToSpeech()
+	--Add Text to Speech
+		ColourNote("violet", "", "Text-to-speech has been disabled from within the plugin to prevent errors, you can enabled it manually by uncommenting it out inside the plugin as well as the 'HandleTalkingMessages' function.  Make sure you have luacom.dll in the same folder as MUSHclient.exe.")
+		ColourNote("violet", "", "You can download it at http://www.gammon.com.au/files/mushclient/lua5.1_extras/luacom.zip.")	
+	--[[
+	if not talk then
+		ColourNote("violet", "", "Text-to-speech is being enabled, if there is an error make sure you have luacom.dll in the same folder as MUSHclient.exe.")
+		ColourNote("violet", "", "You can download it at http://www.gammon.com.au/files/mushclient/lua5.1_extras/luacom.zip.")
+		assert (package.loadlib ("luacom.dll","luacom_open")) ()
+
+		talk = assert (luacom.CreateObject ("SAPI.SpVoice"), "cannot open SAPI")
+	end -- no talk yet
+	]]--
+end
+
+bTalkingWarningsAll = false
+if GetVariable("bTalkingWarningsAll") == "true" then
+	bTalkingWarningsAll = true
+	AddTextToSpeech()
+end
+
+bTalkingWarningsYou = false
+if GetVariable("bTalkingWarningsYou") == "true" then
+	bTalkingWarningsYou = true
+	AddTextToSpeech()
+end
+
+function DisplayHelp()
+ColourNote("violet", "",[[
+ShieldMate v1.1 by Reva
+>< >< >< >< >< >< >< ><
+
+*Specs:
+- Miniwindow to display shield info of last six people detected, hoping these are likely groupmates.
+- Upon a shield down the name and shield type will flash for 15 seconds.
+- New messages display in colour, (green for up, red for down) and fades to white after 2 minutes.
+- Old TPAs for refreshing (after 20 minutes) will be underlined.
+- By default it monitors TPA, Bugshield, EFF(GSHG), optional to monitor CCC and MS.  (NOTE: CCC and MS are not fully accurate there are not always third party messages.)
+- Optional to monitors minions (skeleton warrior and\or fruitbat).
+- Option for Text-to-speech warnings. You MUST have luacom.dll in the same directory as MUSHclient.exe for this to work. (http://www.gammon.com.au/files/mushclient/lua5.1_extras/luacom.zip)  (NOTE: This has been disabled from inside the plugin to prevent errors if luacom.dll is not installed.)
+- NOTE: Names may get confused with titles, if you want to be safe use 'brief names'.
+
+Right-click for options and settings.
+
+*Commands:
+'sm help' - Display this help info.
+'sm reset (full)' - Reset to original settings, 'full' to also reset location.
+'sm remove <name>' - Remove specified name from miniwindow
+
+The miniwindow defaults to the bottom right, click to drag to desired location.
+Default size is for six notifications, and two more optional for minions, click and drag on borders to resize to desired size.
+
+Questions, problems, and especially suggestions, please contact Reva\Spice.
+Enjoy!
+]])
+end
+
+function OnPluginInstall()
+	DoAfterSpecial (1.5, 'ShieldMateWelcome()', sendto.script)
+end
+
+function ShieldMateWelcome()
+ColourNote("violet", "",[[
+Thank you for installing ShieldMate v1.1 by Reva
+>< >< >< >< >< >< >< >< >< >< >< >< >< >< >< ><
+The miniwindow defaults to the bottom right of your screen, if you do not see it maybe it is covered by another miniwindow.
+Take a look at 'sm help' to get started.
+]])
+end
+
+function OnPluginSaveState ()
+	WINDATA[win]["POS_X"] = WindowInfo(win, 10)
+	WINDATA[win]["POS_Y"] = WindowInfo (win, 11)
+	SetVariable("WINDATA", json.encode(WINDATA))
+	SetVariable("GroupMember", json.encode(GroupMember))
+	SetVariable("sShieldTypes", json.encode(sShieldTypes))
+	SetVariable("bDebug", tostring(bDebug))
+	SetVariable("bDisplayOld", tostring(bDisplayOld))
+	SetVariable("iTotalGroupMembers", tostring(iTotalGroupMembers))
+	SetVariable("bRecordCCCYou", tostring(bRecordCCCYou))
+	SetVariable("bRecordCCCOther", tostring(bRecordCCCOther))
+	SetVariable("bRecordMSYou", tostring(bRecordMSYou))
+	SetVariable("bRecordMSOther", tostring(bRecordMSOther))
+	SetVariable("bRecordSkeleton", tostring(bRecordSkeleton))
+	SetVariable("bRecordFruitbat", tostring(bRecordFruitbat))
+	SetVariable("bTalkingWarningsAll", tostring(bTalkingWarningsAll))
+	SetVariable("bTalkingWarningsYou", tostring(bTalkingWarningsYou))
+	SetVariable("LastSaved", os.time())
+	if bIsClosing == true then
+		WindowShow (win,  false)
+		WindowDelete(win)
+	end
+end -- function OnPluginSaveState
+
+
+GroupMember = {}
+Minion = {}
+sShieldTypes = {}
+iTotalGroupMembers = 0
+
+--if we've saved within 2 mins lets load the info, more then that is likely useless, meant for crashes\short shutdowns.
+LastSaved = tonumber(GetVariable("LastSaved")) or 121
+if os.difftime (os.time (), LastSaved) <= 120 then
+	if bDebug == true then
+		Note("DEBUG: Loading saved info...")
+	end
+	if (GetVariable("GroupMember") ~= nil) then
+		GroupMember = json.decode(GetVariable("GroupMember"))
+		if (GetVariable("iTotalGroupMembers") ~= nil) then
+			iTotalGroupMembers = tonumber(GetVariable("iTotalGroupMembers"))
+		else
+			Note("Error, unknown groupmembers, refreshing fully.")
+			GroupMember = {}
+			iTotalGroupMembers = 0
+		end
+	end
+	if (GetVariable("sShieldTypes") ~= nil) then
+		sShieldTypes = json.decode(GetVariable("sShieldTypes"))
+		EnableTimer("flash", true)
+	end
+end
+
+-- Recording a shield type
+function HandleShieldData(sName, sLine, wildcards)
+DebugNote(sName)
+	local bNeedUpdate = false
+	local sMessageType = string.sub(sName, -7, -5)
+	local sShieldType = string.sub(sName, -3)
+
+	-- Major shield string is shorter
+	if (sShieldType == "_MS") then
+		sShieldType = "MS"
+	elseif (sShieldType == "KII") then
+		sShieldType = "Bugs"
+	end
+ 
+	if string.sub(sMessageType, 1, 1) == "Y" then
+		sUsePlayerName = "You"
+	else
+		sUsePlayerName = wildcards.player or "Unknown"
+	end
+
+	DebugNote("sUPN = "..sUsePlayerName)
+
+	--Check if we want to record CCC stuff
+	if sShieldType == "CCC" then
+		if sUsePlayerName == "You" then
+			if bRecordCCCYou == false then return end
+		else
+			if bRecordCCCOther == false then return end
+		end
+	end
+	
+	--Check if we want to record MS stuff
+	if sShieldType == "MS" then
+		if sUsePlayerName == "You" then
+			if bRecordMSYou == false then return end
+		else
+			if bRecordMSOther == false then return end
+		end
+	end
+
+	if string.sub(sMessageType, 3, 3) == "U" then
+		bStatus = true
+	elseif string.sub(sMessageType, 3, 3) == "D" then
+		bStatus = false
+	end
+	
+	if sUsePlayerName == "the skeleton warrior" then
+		if bRecordSkeleton == true then
+			InsertMinionShieldMessage(sUsePlayerName, sShieldType, bStatus, "Skeleton")
+		end
+	elseif string.match(sUsePlayerName, "fruitbat$") then
+		if bRecordFruitbat == true then
+			InsertMinionShieldMessage(sUsePlayerName, sShieldType, bStatus, "Fruitbat")
+		end
+	else
+		InsertShieldMessage(sUsePlayerName, sShieldType, bStatus)
+		if bTalkingWarningsAll == true or bTalkingWarningsYou == true then
+			HandleTalkingMessages(sUsePlayerName, sShieldType, bStatus)
+		end
+	end
+	UpdateWindow()
+  
+end
+
+function HandleTalkingMessages(sName, sType, bStatus)
+--[[
+	for k, v in pairs (NPCList) do
+		if string.match(sName, v .. "$") then
+			return
+		end
+	end
+	local sFinalName = TrimTitles(sName)
+
+	sType = Spacify(sType)
+	local sStatus = "Up"
+	if bStatus == false then
+		sStatus = "Down"
+	end
+
+	if sFinalName == "You" then
+		talk:Speak (sFinalName.. ", " .. sType .. ", " .. sStatus, 1)
+	else
+		if bTalkingWarningsAll == true then
+			talk:Speak (sFinalName.. ", " .. sType .. ", " .. sStatus, 1)
+		end
+	end
+	]]--
+end
+
+function Spacify (sArg)
+	if sArg == "EFF" then
+		return "E F F"
+	elseif sArg == "MS" then
+		return "Major Shield"
+	else 
+		return sArg
+	end
+end
+
+function InsertShieldMessage(sName, sType, bStatus)
+
+	for k, v in pairs (NPCList) do
+		if string.match(sName, v .. "$") then
+			DebugNote("Skipping NPC: ".. v .. ".")
+			return
+		end
+	end
+	local sFinalName = TrimTitles(sName)
+	
+	local bIsNewType = false
+	for i, v in ipairs (sShieldTypes) do
+		if v == sType then
+			bIsNewType = true
+		end			
+	end
+	if bIsNewType == false then
+		table.insert(sShieldTypes, sType)
+		DebugNote("Inserting '" ..sType.."' shield type.")
+	end
+	
+	--Add new groupmember
+	--Done as a for loop to check for changes in name capitalization
+	local bIsMember = false
+	for k, v in pairs (GroupMember) do
+		if string.lower(k) == string.lower(sFinalName) then
+			--In case capitalization changed lets use original capture
+			sFinalName = k
+			bIsMember = true
+			break
+		end
+	end
+	if bIsMember == false then
+		GroupMember[sFinalName] = {}
+		iTotalGroupMembers = iTotalGroupMembers + 1
+	--also if we are re-activating lets add number to groupmembers
+	elseif  GroupMember[sFinalName]["status"] == "inactive" then
+		--if he has been inactive for more then 30 mins lets refresh everything
+		if os.difftime (os.time (), GroupMember[sFinalName]["last_time"]) >= 1800 then
+			GroupMember[sFinalName] = {}
+		end
+		iTotalGroupMembers = iTotalGroupMembers + 1
+	end
+	GroupMember[sFinalName][sType] = bStatus
+	if bStatus == false then
+		iTimes = 0
+		EnableTimer("flash", true)
+	end
+	GroupMember[sFinalName][sType.."_time"] = os.time()
+	GroupMember[sFinalName]["last_time"] = os.time()
+	if GroupMember[sFinalName]["status"] ~= "confirmed" then
+		GroupMember[sFinalName]["status"] = "active"
+	end
+	
+	--DebugNote("#GM = "..iTotalGroupMembers)
+	if iTotalGroupMembers > 6 then
+		DebugNote("Too many, removing!")
+		RemoveOldGroupmembers()
+	end
+end
+
+function InsertMinionShieldMessage(sName, sType, bStatus, bMinionType)
+
+	bMinionName = string.match(sName, "(.+) the giant fruitbat") or bMinionType
+	DebugNote("Minion Name: ".. bMinionName .. ".")
+
+	local bIsNewType = false
+	for i, v in ipairs (sShieldTypes) do
+		if v == sType then
+			bIsNewType = true
+		end			
+	end
+	if bIsNewType == false then
+		table.insert(sShieldTypes, sType)
+		DebugNote("Inserting '" ..sType.."' shield type.")
+	end
+	
+	--Create minion data if new
+	if Minion[bMinionType] == nil then
+		Minion[bMinionType] = {}
+	end
+
+	Minion[bMinionType][sType] = bStatus
+	if bStatus == false then
+		iTimes = 0
+		EnableTimer("flash", true)
+	end
+	Minion[bMinionType]["display_name"] = bMinionName
+	Minion[bMinionType][sType.."_time"] = os.time()
+end
+
+function DieMinion(sName, sLine, wildcards)
+
+	DebugNote(sName)
+
+	if sName == "SkeletonWarriorDead" then
+		Minion["Skeleton"] = nil
+	else		
+		sToMatch = string.match(sLine, "(.+) the giant fruitbat") or "Fruitbat"
+		DebugNote("sTM = "..sToMatch)
+		if Minion["Fruitbat"] ~= nil and Minion["Fruitbat"]["display_name"] == sToMatch then
+			Minion["Fruitbat"] = nil
+		end
+	end
+end
+
+function RemoveOldGroupmembers()
+	local sOldestMember = ""
+	local sOldestTime = 0
+	local bFound = false
+	for k, v in pairs (GroupMember) do
+		if v["status"] ~= "inactive" and k ~= "You" then
+			if sOldestTime == 0 or v["last_time"] < sOldestTime then
+				sOldestMember = k
+				sOldestTime = v["last_time"]
+				bFound = true
+			end
+		end
+	end
+	if bFound == true then
+		--Lets keep his info in case he rejoins, etc.
+		GroupMember[sOldestMember]["status"] = "inactive"		
+		iTotalGroupMembers = iTotalGroupMembers - 1
+		DebugNote(sOldestMember .. " set to inactive.")
+	else
+		DebugNote("Error: Oldest Member not found.")
+	end
+end
+
+function DebugNote(sText)
+	if bDebug == true then
+		Note("DEBUG: " .. sText)
+	end
+end
+function OnPluginDisable()
+	WindowShow (win,  false)
+end
+
+bIsClosing = false
+function OnPluginClose ()
+	bIsClosing = true
+end
+
+
+iFlash = 0
+iTimes = 0
+function ToggleFlash()
+	iTimes = iTimes + 1
+	if iTimes > iHighlightTime then
+		EnableTimer("flash", false)
+		iFlash = 0
+		iTimes = 0
+	end
+	
+	iFlash = 1 - iFlash
+	UpdateWindow()
+end
+
+--------------------------------------------------------------------------------
+--   MAIN WINDOW
+--------------------------------------------------------------------------------
+function UpdateWindow()
+
+	--Do not update while dragging or it stops the dragging
+	if bDragging == true then 
+		--DebugNote("Not updated bec. of dragging.")
+		return 
+	end
+	WindowRectOp (win, 2, 0, 0, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], ColourNameToRGB("black"))-- clears the window so old frame doesn't show
+	local hotspots_list = WindowHotspotList(win)
+
+	--remove old named hotspots, leaving resizers
+	for _, v in ipairs (hotspots_list) do 
+		if string.match(v, "aname") then
+			--Note (v) 
+			WindowDeleteHotspot(win, v)
+		end
+	end
+
+	WindowAddHotspot(win, "dragspot", WINDATA[win]["PADDING"]+2, WINDATA[win]["PADDING"]+2, WINDATA[win]["WIDTH"] - WINDATA[win]["PADDING"]-2,WINDATA[win]["HEIGHT"] - WINDATA[win]["PADDING"]-2,   --rectangle
+                 "",   -- MouseOver
+                 "",   -- CancelMouseOver
+                 "mousedown",
+                 "cancelmousedown", 
+                 "mouseup", 
+                 "Click to drag, right click for options",  -- tooltip text
+                 miniwin.cursor_hand, 0)  -- hand cursor
+	WindowDragHandler(win, "dragspot", "dragmove", "dragrelease", 0) 
+
+	local iLineSpacing = 0
+	local iSkipTitleLine = 0
+
+	--Draw title
+	if WINDATA[win]["TITLE"] == true then
+		local sTitle = "Shield Status"
+		local iFWidth = WindowTextWidth (win, "f", sTitle)
+		local iIndent = (WINDATA[win]["WIDTH"]-iFWidth)/2
+		iLineSpacing = 3
+		WindowText (win, "f", sTitle, iIndent, (WINDATA[win]["PADDING"]), 0, 0,	ColourNameToRGB(WINDATA[win]["TITLE_COLOUR"]), false) -- not Unicode
+
+		--Draw a dotted line
+		WindowLine (win, WINDATA[win]["PADDING"]+1, (WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])+((WINDATA[win]["PADDING"])),
+			WINDATA[win]["WIDTH"]-WINDATA[win]["PADDING"], (WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])+((WINDATA[win]["PADDING"])), 
+			ColourNameToRGB(cWhite), miniwin.pen_dot, 0)
+		iSkipTitleLine = 1
+	end
+
+	local iLineNumber = 0
+	local bDisplayingPlayer = false
+
+
+	--Display you first
+	if GroupMember["You"] ~= nil then
+		--check initially if any shields are down to know if we should highlight the name
+		bHighlightName = false
+		for sKey, sValue in pairs (GroupMember["You"]) do
+			--Check if we should be highlighting, within 10 seconds, on flash timer, and is false
+			if sValue == false and os.difftime (os.time (), GroupMember["You"][sKey.."_time"]) <= iHighlightTime and iFlash == 0 then
+				bHighlightName = true
+			end
+		end
+		--Name calculations
+		local sWindowText = ""
+		local iIndent = 0
+		local sWindowText = "You:"
+		if bHighlightName == true then
+			--Set text colour for name to black while highlighting	
+			sNameColour = ColourNameToRGB("black")
+			WindowRectOp (win, miniwin.rect_fill, WINDATA[win]["PADDING"],
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			WINDATA[win]["PADDING"]+WindowTextWidth(win, "f", "You"),
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing+WINDATA[win]["FONT_HEIGHT"]),
+			ColourNameToRGB("yellow")) 
+		else
+			--set text colour for name to white
+			sNameColour = ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"])
+		end
+
+		--Print the name
+		WindowText (win, "f", sWindowText, WINDATA[win]["PADDING"]+iIndent, 
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			0, 	0,	sNameColour, false) -- not Unicode
+		--Add colon for when text is black on highlight
+		WindowText (win, "f", ":", WINDATA[win]["PADDING"]+WindowTextWidth (win, "f", "You"), 
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			0, 	0,	ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), false) -- not Unicode
+	
+		--Called aname since seems alphabetic order goes first to be on top of the dragone
+		WindowAddHotspot(win, "aname_".."You",  -- for spot name text
+		WINDATA[win]["PADDING"]+iIndent, -- from top
+		((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+		WINDATA[win]["PADDING"]+iIndent+WindowTextWidth(win, "f", string.sub("You", 1, 3)), 
+		((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+(WINDATA[win]["PADDING"]+iLineSpacing)+WINDATA[win]["FONT_HEIGHT"],  -- rectangle
+            "",   -- MouseOver
+            "",   -- CancelMouseOver
+            "mousedown",
+            "cancelmousedown", 
+            "mouseup", 
+            "Right-click to remove",  -- tooltip text
+            3, 0)  -- crosshairs
+
+		 iIndent = iIndent + WindowTextWidth (win, "f", sWindowText..":") 
+
+		--print shield data
+		for kk, vv in pairs (sShieldTypes) do
+			sWindowText = vv
+			if GroupMember["You"][vv] ~= nil then
+				local iElapsedTime = os.difftime (os.time (),GroupMember["You"][vv.."_time"])
+				local sFontToUse = "f"
+				--strikethrough for white down message POSSIBLE CHANGE TO SWITCH AT 10% FROM END
+				if GroupMember["You"][vv] == false and iElapsedTime >= iSecondsToWhite then
+					sFontToUse = "f2"
+				end
+				--italics for old TPA
+				if GroupMember["You"][vv] == true and vv == "TPA" and iElapsedTime >= iSecondsToUnderline then
+					sFontToUse = "f3"
+				end
+					
+				--This means we want to highlight it!
+				if os.difftime (os.time (), GroupMember["You"][vv.."_time"]) <= iHighlightTime and GroupMember["You"][vv] == false and iFlash == 0 then
+					--figure out what colour text we want
+					sShieldTextColour = ColourNameToRGB("black")
+					--Highlight the shield name
+					WindowRectOp (win, miniwin.rect_fill, WINDATA[win]["PADDING"]+iIndent, 
+						((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+						WINDATA[win]["PADDING"]+iIndent+WindowTextWidth(win, "f", sWindowText),
+						((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing+WINDATA[win]["FONT_HEIGHT"]),
+						ColourNameToRGB("yellow")) 
+				else
+					sShieldTextColour = NewGetColour(GroupMember["You"][vv],GroupMember["You"][vv.."_time"])
+				end
+					WindowText (win, sFontToUse, sWindowText, WINDATA[win]["PADDING"]+iIndent, 
+						((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+						0, 0, sShieldTextColour, false) -- not Unicode
+					iIndent = iIndent + WindowTextWidth (win, "f", sWindowText.."0") 
+				end
+			
+			end
+		iLineNumber = iLineNumber + 1
+	end
+	
+	for k, v in pairs (GroupMember) do
+		bDisplayingPlayer = true
+		
+		--check if we are displaying over 30 mins, if not set those to inactive
+		if bDisplayOld == false then
+			if k ~= "You" and v["status"] ~= "inactive" and os.difftime (os.time (), GroupMember[k]["last_time"]) >= 1800 then
+				DebugNote("Setting '" .. k .. "' to inactive, more then 30 mins.")
+				GroupMember[k]["status"] = "inactive"
+				iTotalGroupMembers = iTotalGroupMembers - 1
+			end
+		end
+		
+		--only print the 5 most recent excluding you
+		if k ~= "You" and v["status"] == "active" or v["status"] == "confirmed" then
+			--check initially if any shields are down to know if we should highlight the name
+			bHighlightName = false
+			for sKey, sValue in pairs (v) do
+				--Check if we should be highlighting, within 10 seconds, on flash timer, and is false
+				if sValue == false and os.difftime (os.time (), v[sKey.."_time"]) <= iHighlightTime and iFlash == 0 then
+					bHighlightName = true
+				end
+			end
+
+			--Name calculations
+			local sWindowText = ""
+			local iIndent = 0
+			local sWindowText = k..":"
+			if bHighlightName == true then
+				--Set text colour for name to black while highlighting	
+				sNameColour = ColourNameToRGB("black")
+				WindowRectOp (win, miniwin.rect_fill, 
+				WINDATA[win]["PADDING"],
+				((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+				WINDATA[win]["PADDING"]+WindowTextWidth(win, "f", k),
+				((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing+WINDATA[win]["FONT_HEIGHT"]),
+				ColourNameToRGB("yellow")) 
+			else
+				--set text colour for name to white
+				sNameColour = ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"])
+			end
+
+			--Print the name
+			WindowText (win, "f", sWindowText, WINDATA[win]["PADDING"]+iIndent, 
+				((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+				0, 	0,	sNameColour, false) -- not Unicode
+			--Add colon for when text is black on highlight
+			WindowText (win, "f", ":", WINDATA[win]["PADDING"]+WindowTextWidth (win, "f", k), 
+				((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+				0, 	0,	ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), false) -- not Unicode
+	
+			--Called aname since seems alphabetic order goes first to be on top of the dragone
+			WindowAddHotspot(win, "aname_"..k,  -- for spot name text
+			WINDATA[win]["PADDING"]+iIndent, -- from top
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			WINDATA[win]["PADDING"]+iIndent+WindowTextWidth(win, "f", string.sub(k, 1, 3)), 
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+(WINDATA[win]["PADDING"]+iLineSpacing)+WINDATA[win]["FONT_HEIGHT"],  -- rectangle
+                 "",   -- MouseOver
+                 "",   -- CancelMouseOver
+                 "mousedown",
+                 "cancelmousedown", 
+                 "mouseup", 
+                 "Right-click to remove",  -- tooltip text
+                 3, 0)  -- crosshairs
+
+			 iIndent = iIndent + WindowTextWidth (win, "f", sWindowText..":") 
+
+			--print shield data
+			for kk, vv in pairs (sShieldTypes) do
+				sWindowText = vv
+				if v[vv] ~= nil then
+					local iElapsedTime = os.difftime (os.time (),v[vv.."_time"])
+					local sFontToUse = "f"
+					--strikethrough for white down message POSSIBLE CHANGE TO SWITCH AT 10% FROM END
+					if v[vv] == false and iElapsedTime >= iSecondsToWhite then
+						sFontToUse = "f2"
+					end
+					--italics for old TPA
+					if v[vv] == true and vv == "TPA" and iElapsedTime >= iSecondsToUnderline then
+						sFontToUse = "f3"
+					end
+					
+					--This means we want to highlight it!
+					if os.difftime (os.time (), v[vv.."_time"]) <= iHighlightTime and v[vv] == false and iFlash == 0 then
+						--figure out what colour text we want
+						sShieldTextColour = ColourNameToRGB("black")
+						--Highlight the shield name
+						WindowRectOp (win, miniwin.rect_fill, WINDATA[win]["PADDING"]+iIndent, 
+							((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+							WINDATA[win]["PADDING"]+iIndent+WindowTextWidth(win, "f", sWindowText),
+							((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing+WINDATA[win]["FONT_HEIGHT"]),
+							ColourNameToRGB("yellow")) 
+					else
+						sShieldTextColour = NewGetColour(v[vv],v[vv.."_time"])
+					end
+					WindowText (win, sFontToUse, sWindowText, WINDATA[win]["PADDING"]+iIndent, 
+						((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+						0, 0, sShieldTextColour, false) -- not Unicode
+					iIndent = iIndent + WindowTextWidth (win, "f", sWindowText.."0") 
+				end
+			
+			end
+			iLineNumber = iLineNumber + 1
+		end
+	end
+
+
+	for k, v in pairs (Minion) do
+
+		--Draw a dotted line
+		if bDisplayingPlayer == true then
+			iLineSpacing = iLineSpacing + 1
+			WindowLine (win, WINDATA[win]["PADDING"]+1, 
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+				WINDATA[win]["WIDTH"]-WINDATA[win]["PADDING"], 
+				((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing), 
+				ColourNameToRGB(cWhite), miniwin.pen_dot, 0)
+			iLineSpacing = iLineSpacing + 2
+			--lets only draw one line
+			bDisplayingPlayer = false
+		end
+
+		--check initially if any shields are down to know if we should highlight the name
+		bHighlightName = false
+		for sKey, sValue in pairs (v) do
+			--Check if we should be highlighting, within 10 seconds, on flash timer, and is false
+			if sValue == false and os.difftime (os.time (), v[sKey.."_time"]) <= iHighlightTime and iFlash == 0 then
+				bHighlightName = true
+			end
+		end
+
+		--Name calculations
+		local sWindowText = ""
+		local iIndent = 0
+		local sWindowText = v["display_name"]..":"
+		if bHighlightName == true then
+			--Set text colour for name to white
+			sNameColour = ColourNameToRGB("white")
+			WindowRectOp (win, miniwin.rect_fill, 
+			WINDATA[win]["PADDING"],
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			WINDATA[win]["PADDING"]+WindowTextWidth(win, "f", v["display_name"]),
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing+WINDATA[win]["FONT_HEIGHT"]),
+			ColourNameToRGB("yellow")) 
+		else
+			--set text colour for name to white
+			sNameColour = ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"])
+		end
+
+		--Print the name
+		WindowText (win, "f", sWindowText, WINDATA[win]["PADDING"]+iIndent, 
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			0, 	0,	sNameColour, false) -- not Unicode
+		--Add colon for when text is black on highlight
+		WindowText (win, "f", ":", WINDATA[win]["PADDING"]+WindowTextWidth (win, "f", v["display_name"]), 
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			0, 	0,	ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), false) -- not Unicode
+
+			--Called aname since seems alphabetic order goes first to be on top of the dragone
+			WindowAddHotspot(win, "aname_"..k,  -- for spot name text
+			WINDATA[win]["PADDING"]+iIndent, -- from top
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+			WINDATA[win]["PADDING"]+iIndent+WindowTextWidth(win, "f", string.sub(k, 1, 3)), 
+			((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+(WINDATA[win]["PADDING"]+iLineSpacing)+WINDATA[win]["FONT_HEIGHT"],  -- rectangle
+                 "",   -- MouseOver
+                 "",   -- CancelMouseOver
+                 "mousedown",
+                 "cancelmousedown", 
+                 "mouseup", 
+                 "Right-click for options",  -- tooltip text
+                 3, 0)  -- crosshairs
+
+		iIndent = iIndent + WindowTextWidth (win, "f", sWindowText..":") 
+
+		--print shield data
+		for kk, vv in pairs (sShieldTypes) do
+			sWindowText = vv
+			if v[vv] ~= nil then
+				local iElapsedTime = os.difftime (os.time (),v[vv.."_time"])
+				local sFontToUse = "f"
+				--strikethrough for white down message POSSIBLE CHANGE TO SWITCH AT 10% FROM END
+				if v[vv] == false and iElapsedTime >= iSecondsToWhite then
+					sFontToUse = "f2"
+				end
+				--italics for old TPA
+				if v[vv] == true and vv == "TPA" and iElapsedTime >= iSecondsToUnderline then
+					sFontToUse = "f3"
+				end
+				
+				--This means we want to highlight it!
+				if os.difftime (os.time (), v[vv.."_time"]) <= iHighlightTime and v[vv] == false and iFlash == 0 then
+					--figure out what colour text we want
+					sShieldTextColour = ColourNameToRGB("black")
+					--Highlight the shield name
+					WindowRectOp (win, miniwin.rect_fill, WINDATA[win]["PADDING"]+iIndent, 
+						((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+						WINDATA[win]["PADDING"]+iIndent+WindowTextWidth(win, "f", sWindowText),
+						((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing+WINDATA[win]["FONT_HEIGHT"]),
+						ColourNameToRGB("yellow")) 
+				else
+					sShieldTextColour = NewGetColour(v[vv],v[vv.."_time"])
+				end
+				WindowText (win, sFontToUse, sWindowText, WINDATA[win]["PADDING"]+iIndent, 
+					((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLineNumber+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),
+					0, 0, sShieldTextColour, false) -- not Unicode
+				iIndent = iIndent + WindowTextWidth (win, "f", sWindowText.."0") 
+			end
+		
+		end
+		iLineNumber = iLineNumber + 1
+	end
+    WindowRectOp(win, miniwin.rect_frame, 0, 0, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], ColourNameToRGB(WINDATA[win]["BORDER_COLOUR"]), ColourNameToRGB("white"))
+end
+
+--------------------------------------------------------------------------------
+--   DRAG AND HOTSPOT HANDLERS
+--------------------------------------------------------------------------------
+function mousedown(flags, hotspot_id)
+	if hotspot_id == "dragspot" then
+		startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
+	end
+	
+	--cast tpa on click
+	--[[
+	for k, v in pairs(GroupMember) do
+	
+		if (hotspot_id == "aname_"..k) and (flags == miniwin.hotspot_got_lh_mouse) then
+			if string.lower(k) == "you" then
+				Send("cast tpa on me")
+			else
+				Send("cast tpa on " .. k)
+			end
+        end
+	end
+	]]--
+end -- mousedown
+
+function cancelmousedown(flags, hotspot_id)
+end -- cancelmousedown
+
+function mouseup(flags, hotspot_id)
+		if hotspot_id == "aname_Reva" then
+			Note("yes")
+		end
+	if (hotspot_id == "dragspot") and (flags == miniwin.hotspot_got_rh_mouse ) then
+
+		local function check(t, i)
+			t[i] = "+"..t[i]
+		end
+
+		local function disable(t, i)
+			t[i] = "^"..t[i]
+		end
+
+		local menu_strings = {
+			"!Help",
+			">Settings",
+			"Font\\Size",
+			">Title",
+			"On",
+			"Off",
+			"<",
+			">Colours",
+			"Title",
+			"Text",
+			"Border",
+			"<",
+			"-",
+			">Debug",
+			"On",
+			"Off",
+			"<",
+			"<",
+			">Options",
+			">Record",
+			">CCC",
+			"You",
+			"Other",
+			"<",
+			">Major",
+			"You",
+			"Other",
+			"<",
+			">Minions",
+			"Skeleton",
+			"Fruitbat",
+			"<",
+			"<",
+			">Refresh",
+			">Auto (30 min)",
+			"On",
+			"Off",
+			"<",
+			"Inactive",
+			"Full",
+			"<",
+			">Talk",
+			"You",
+			"All",
+			"<",
+			"<",
+			"-",
+			">Reset",
+			"Settings",
+			"All",
+			"<",
+		}
+ --!Help|>Settings|Font\Size|>Title|On|Off|<|>Colours|Title|Text|Border|<|-|>Debug|On|Off|<|<|>Options|>Record|>CCC|You|Other|<|>Major|You|Other|<|>Minions|Skeleton|Fruitbat|<|<|>Refresh|>Auto (30 min)|On|Off|<|Inactive|Full|<|<|-|>Reset|Settings|All|<
+		local ms = menu_strings
+		if WINDATA[win]["TITLE"] == true then 
+			check(ms, 5) 
+		else 
+			check(ms, 6) 
+			disable(ms, 9)
+		end
+		if bDebug == true then
+			check(ms, 15)
+		else
+			check(ms, 16)
+		end
+		if bRecordCCCYou == true then
+			check(ms, 22)
+		end
+		if bRecordCCCOther == true then
+			check(ms, 23)
+		end
+		if bRecordMSYou == true then
+			check(ms, 26)
+		end
+		if bRecordMSOther == true then
+			check(ms, 27)
+		end
+		if bRecordSkeleton == true then
+			check(ms, 30)
+		end
+		if bRecordFruitbat == true then
+			check(ms, 31)
+		end
+		if bDisplayOld == false then
+			check(ms, 36)
+		else
+			check(ms, 37)
+		end
+		if bTalkingWarningsYou == true then
+			check(ms, 43)
+		end
+		if bTalkingWarningsAll == true then
+			check(ms, 44)
+			disable(ms, 43)
+		end
+
+		local menu_text = table.concat(menu_strings, "|")
+		DebugNote("Menu Text = " .. menu_text)
+
+		result = WindowMenu (win, 
+			WindowInfo (win, 14),  -- x
+			WindowInfo (win, 15),   -- y
+			menu_text)
+
+		result = tonumber(result) or 0
+
+		if WINDATA[win]["TITLE"] == false and result >= 4 then
+			result = result + 1
+		end
+			
+		if bTalkingWarningsAll == true and result >= 20 then
+			result = result + 1
+		end
+
+		DebugNote("Result = " .. tostring(result))
+
+		if result == 0 then
+			--DebugNote("Nil result.")
+		elseif result == 1 then
+			DisplayHelp()
+		elseif result == 2 then
+			wanted_font = utils.fontpicker(font_name, font_size)
+			if wanted_font then
+				font_name = wanted_font.name
+				font_size = wanted_font.size
+				DebugNote("Setting font: " .. font_name)
+				DebugNote("Setting font size: " .. font_size)
+				SetFont(tostring(font_name))
+				SetFontSize(font_size)
+			end
+		elseif result == 3 then
+			WINDATA[win]["TITLE"] = true
+			ResizeRedrawWindowGeneric(win, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"] + WINDATA[win]["FONT_HEIGHT"] + 2, "ShieldStatus")								
+		elseif result == 4 then
+			WINDATA[win]["TITLE"] = false
+			ResizeRedrawWindowGeneric(win, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"] - WINDATA[win]["FONT_HEIGHT"] - 2, "ShieldStatus")								
+		elseif result == 5 then
+			chosen_colour = PickColour(ColourNameToRGB(WINDATA[win]["TITLE_COLOUR"]))
+			if chosen_colour ~= -1 then
+				DebugNote("colour = " .. chosen_colour)
+				--Correct for white to make it slightly off
+				if chosen_colour == 16777215 then
+					WINDATA[win]["TITLE_COLOUR"] = cWhite
+				else
+					WINDATA[win]["TITLE_COLOUR"] = RGBColourToName(chosen_colour)
+				end
+			end
+		elseif result == 6 then
+			chosen_colour = PickColour(ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]))
+			if chosen_colour ~= -1 then
+				DebugNote("colour = " .. chosen_colour)
+				--Correct for white to make it slightly off
+				if chosen_colour == 16777215 then
+					WINDATA[win]["TEXT_COLOUR"] = cWhite
+				else
+					WINDATA[win]["TEXT_COLOUR"] = RGBColourToName(chosen_colour)
+				end
+			end
+		elseif result == 7 then
+			local chosen_colour = PickColour(ColourNameToRGB(WINDATA[win]["BORDER_COLOUR"]))
+			if chosen_colour ~= -1 then
+				DebugNote("colour = " .. chosen_colour)
+				--Correct for white to make it slightly off
+				if chosen_colour == 16777215 then
+					WINDATA[win]["BORDER_COLOUR"] = cWhite
+				else
+					WINDATA[win]["BORDER_COLOUR"] = RGBColourToName(chosen_colour)
+				end
+			end
+		elseif result == 8 then
+			bDebug = true
+			DebugNote("Showing Debug info.")
+		elseif result == 9 then
+			DebugNote("Hiding Debug info.")
+			bDebug = false
+		elseif result == 10 then
+			if bRecordCCCYou == false then
+				bRecordCCCYou = true
+			else
+				bRecordCCCYou = false
+			end
+		elseif result == 11 then
+			if bRecordCCCOther == false then
+				bRecordCCCOther = true
+			else
+				bRecordCCCOther = false
+			end
+		elseif result == 12 then
+			if bRecordMSYou == false then
+				bRecordMSYou = true
+			else
+				bRecordMSYou = false
+			end
+		elseif result == 13 then
+			if bRecordMSOther == false then
+				bRecordMSOther = true
+			else
+				bRecordMSOther = false
+			end
+		elseif result == 14 then
+			if bRecordSkeleton == false then
+				bRecordSkeleton = true
+				iMiniwindowLines = iMiniwindowLines + 1
+				RecalcHeight()				
+			else
+				bRecordSkeleton = false
+				iMiniwindowLines = iMiniwindowLines - 1
+				RecalcHeight()
+			end
+		elseif result == 15 then
+			if bRecordFruitbat == false then
+				bRecordFruitbat = true
+				iMiniwindowLines = iMiniwindowLines + 1
+				RecalcHeight()
+			else
+				bRecordFruitbat = false
+				iMiniwindowLines = iMiniwindowLines - 1
+				RecalcHeight()
+			end
+		elseif result == 16 then
+			bDisplayOld = false
+		elseif result == 17 then
+			bDisplayOld = true
+		elseif result == 18 then
+			DebugNote("Refreshing innactive members.")
+			for k, v in pairs (GroupMember) do
+				--if he has been inactive for more then 30 mins lets set to inactive
+				if os.difftime (os.time (), GroupMember[k]["last_time"]) >= 1800 then
+					GroupMember[k]["status"] = "inactive"
+					iTotalGroupMembers = iTotalGroupMembers - 1
+				end
+			end
+		elseif result == 19 then
+			DebugNote("Refreshing fully.")
+			GroupMember = {}
+			Minion = {}
+			iTotalGroupMembers = 0
+		elseif result == 20 then
+			if bTalkingWarningsYou == true then
+				bTalkingWarningsYou = false
+			else
+				bTalkingWarningsYou = true
+				AddTextToSpeech()
+			end
+		elseif result == 21 then
+			if bTalkingWarningsAll == true then
+				bTalkingWarningsAll = false
+			else
+				bTalkingWarningsAll = true
+				AddTextToSpeech()
+			end
+		elseif result == 22 then
+			DebugNote("Reseting settings.")
+			ShieldMateReset()
+			--reset settings
+		elseif result == 23 then
+			--full reset
+			DebugNote("Reseting settings fully.")
+			GroupMember = {}
+			Minion = {}
+			iTotalGroupMembers = 0
+			bRecordCCCYou = false
+			bRecordCCCOther = false
+			bRecordMSYou = false
+			bRecordMSOther = false
+			bRecordSkeleton = false
+			bRecordFruitbat = false
+			ShieldMateReset()
+			WindowPosition(win, GetInfo(281)-WINDATA[win]["WIDTH"], GetInfo(280)-WINDATA[win]["HEIGHT"], 0, 2)
+		end
+		UpdateWindow()
+	end
+	
+	for k, v in pairs(GroupMember) do
+	
+		if (hotspot_id == "aname_"..k) and (flags == miniwin.hotspot_got_rh_mouse) then
+			--DebugNote(hotspot_id)
+			local function check(t, i)
+				t[i] = "+"..t[i]
+			end
+
+			local function disable(t, i)
+				t[i] = "^"..t[i]
+			end
+
+			local menu_strings = {
+				"Remove",
+				"Reset",
+			}
+
+			local menu_text = table.concat(menu_strings, "|")
+			DebugNote("Menu Text = " .. menu_text)
+
+			result = WindowMenu (win, 
+			WindowInfo (win, 14),  -- x
+			WindowInfo (win, 15),   -- y
+			menu_text)
+
+			if result == "Remove" then
+				GroupMember[k]["status"] = "inactive"		
+				iTotalGroupMembers = iTotalGroupMembers - 1
+				WindowDeleteHotspot (win, "aname_"..k)
+				DebugNote(k .. " set to inactive.")
+			elseif result == "Reset" then
+				GroupMember[k] = nil
+				iTotalGroupMembers = iTotalGroupMembers - 1
+				WindowDeleteHotspot (win, "aname_"..k)
+				DebugNote(k .. " reset.")
+			end
+			UpdateWindow()
+		end
+	end
+
+	for k, v in pairs(Minion) do
+		if (hotspot_id == "aname_"..k) and (flags == miniwin.hotspot_got_rh_mouse) then
+			local function check(t, i)
+				t[i] = "+"..t[i]
+			end
+
+			local function disable(t, i)
+				t[i] = "^"..t[i]
+			end
+
+			local menu_strings = {
+				"Remove",
+			}
+
+			local menu_text = table.concat(menu_strings, "|")
+			DebugNote("Menu Text = " .. menu_text)
+
+			result = WindowMenu (win, 
+			WindowInfo (win, 14),  -- x
+			WindowInfo (win, 15),   -- y
+			menu_text)
+
+			if result == "Remove" then
+				Minion[k] = nil
+				DebugNote(k .. " removed.")
+			end
+			UpdateWindow()
+		end
+	end
+end -- mouseup
+
+bDragging = false
+function dragmove(flags, hotspot_id)
+	if hotspot_id == "dragspot" then
+		local posx, posy = WindowInfo (win, 17), WindowInfo (win, 18)
+		bDragging = true
+		--DebugNote("Dragging...")
+		-- move the window to the new location
+		WindowPosition(win, posx - startx, posy - starty, 0, 2)
+
+		-- change the mouse cursor shape appropriately
+		if posx < 0 or posx > GetInfo (281) or
+		posy < 0 or posy > GetInfo (280) then
+			check (SetCursor ( 11))   -- X cursor
+		else
+			check (SetCursor ( 1))   -- hand cursor
+		end -- if
+	end
+end -- dragmove
+
+function dragrelease(flags, hotspot_id)
+	--DebugNote("No longer dragging")
+	bDragging = false
+end -- dragrelease
+
+-- Quow's functions to create draggable, resizable, window edges in a modular way!
+function CreateResizableWindow(winThisResizer, sShorthand, iThisWinWidth, iThisWinHeight)
+  --Added by Reva: top, top right, top left (modified left and right respectively)
+  -- Resize hotspot topleft
+  WindowAddHotspot(winThisResizer, "hsTL1Resizer" .. sShorthand, 0, 0, 4, 20, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_nw_se_arrow , 0)
+  WindowAddHotspot(winThisResizer, "hsTL2Resizer" .. sShorthand, 0, 0, 20, 4, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_nw_se_arrow , 0)
+  -- Resize hotspot top										right from left, down from top, right from left, down from top, rectange
+  WindowAddHotspot(winThisResizer, "hsTResizer" .. sShorthand, 20, 0, iThisWinWidth - 20, 4, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ns_arrow , 0)
+  -- Resize hotspot topright															   --left, top <corner, right, bottom < corner (top left, bottom right)
+  WindowAddHotspot(winThisResizer, "hsTR1Resizer" .. sShorthand, iThisWinWidth - 20, 0, iThisWinWidth, 4, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ne_sw_arrow , 0)
+  WindowAddHotspot(winThisResizer, "hsTR2Resizer" .. sShorthand, iThisWinWidth - 4, 0, iThisWinWidth, 20, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ne_sw_arrow , 0)
+
+
+  -- Resize hotspot left
+  --WindowAddHotspot(winThisResizer, "hsLResizer" .. sShorthand, 0, 0, 4, iThisWinHeight - 20, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ew_arrow, 0)
+  WindowAddHotspot(winThisResizer, "hsLResizer" .. sShorthand, 0, 20, 4, iThisWinHeight - 20, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ew_arrow, 0)
+  -- Resize hotspot bottomleft
+  WindowAddHotspot(winThisResizer, "hsBL1Resizer" .. sShorthand, 0, iThisWinHeight - 20, 4, iThisWinHeight, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ne_sw_arrow , 0)
+  WindowAddHotspot(winThisResizer, "hsBL2Resizer" .. sShorthand, 4, iThisWinHeight - 4, 20, iThisWinHeight, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ne_sw_arrow , 0)
+  -- Resize hotspot right
+  --WindowAddHotspot(winThisResizer, "hsRResizer" .. sShorthand, iThisWinWidth - 4, 0, iThisWinWidth, iThisWinHeight - 20, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ew_arrow, 0)
+  WindowAddHotspot(winThisResizer, "hsRResizer" .. sShorthand, iThisWinWidth - 4, 20, iThisWinWidth, iThisWinHeight - 20, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ew_arrow, 0)
+  -- Resize hotspot bottomright
+  WindowAddHotspot(winThisResizer, "hsBR1Resizer" .. sShorthand, iThisWinWidth - 4, iThisWinHeight - 20, iThisWinWidth, iThisWinHeight, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_nw_se_arrow  , 0)
+  WindowAddHotspot(winThisResizer, "hsBR2Resizer" .. sShorthand, iThisWinWidth - 20, iThisWinHeight - 4, iThisWinWidth - 4, iThisWinHeight, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_nw_se_arrow  , 0)
+  -- Resize hotspot bottom
+  WindowAddHotspot(winThisResizer, "hsBResizer" .. sShorthand, 20, iThisWinHeight - 4, iThisWinWidth - 20, iThisWinHeight, "", "", "ResizeWindowMouseDown", "", "", "", miniwin.cursor_ns_arrow , 0)
+
+  --Reva: 5 added points
+  WindowDragHandler(winThisResizer, "hsTL1Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsTL2Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsTResizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsTR1Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsTR2Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+
+  -- Drag handlers for the 7 points
+  WindowDragHandler(winThisResizer, "hsLResizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsBL1Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsBL2Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsRResizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsBR1Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsBR2Resizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+  WindowDragHandler(winThisResizer, "hsBResizer" .. sShorthand, "ResizeMoveCallback", "", 0)
+end
+
+-- And this is to update all of those resizable hot-edges for when the window size is changed
+function UpdateResizableWindow(winThisResizer, sShorthand, iThisWinWidth, iThisWinHeight)
+  --Reva: added 5
+  WindowMoveHotspot(winThisResizer, "hsTL1Resizer" .. sShorthand, 0, 0, 4, 20)
+  WindowMoveHotspot(winThisResizer, "hsTL2Resizer" .. sShorthand, 0, 0, 20, 4)
+  WindowMoveHotspot(winThisResizer, "hsTResizer" .. sShorthand, 20, 0, iThisWinWidth - 20, 0)
+  WindowMoveHotspot(winThisResizer, "hsTR1Resizer" .. sShorthand, iThisWinWidth - 20, 0, iThisWinWidth, 4)
+  WindowMoveHotspot(winThisResizer, "hsTR2Resizer" .. sShorthand, 0, 0, 4, iThisWinHeight - 20)
+
+  WindowMoveHotspot(winThisResizer, "hsLResizer" .. sShorthand, 0, 20, 4, iThisWinHeight - 20)
+  WindowMoveHotspot(winThisResizer, "hsBL1Resizer" .. sShorthand, 0, iThisWinHeight - 20, 4, iThisWinHeight)
+  WindowMoveHotspot(winThisResizer, "hsBL2Resizer" .. sShorthand, 4, iThisWinHeight - 4, 20, iThisWinHeight)
+  WindowMoveHotspot(winThisResizer, "hsRResizer" .. sShorthand, iThisWinWidth - 4, 20, iThisWinWidth, iThisWinHeight - 20)
+  WindowMoveHotspot(winThisResizer, "hsBR1Resizer" .. sShorthand, iThisWinWidth - 4, iThisWinHeight - 20, iThisWinWidth, iThisWinHeight)
+  WindowMoveHotspot(winThisResizer, "hsBR2Resizer" .. sShorthand, iThisWinWidth - 20, iThisWinHeight - 4, iThisWinWidth - 4, iThisWinHeight)
+  WindowMoveHotspot(winThisResizer, "hsBResizer" .. sShorthand, 20, iThisWinHeight - 4, iThisWinWidth - 20, iThisWinHeight)
+end
+
+
+-- Store initial mouse click in the resize window edges
+iResizeXStart = 0
+iResizeYStart = 0
+function ResizeWindowMouseDown(flags, hotspot_id)
+	local winThisResizeWin = win
+	iResizeXStart, iResizeYStart = WindowInfo(winThisResizeWin, 17), WindowInfo(winThisResizeWin, 18)
+end 
+
+-- Handle live resize dragging of a window
+function ResizeMoveCallback(flags, hotspot_id)
+	local iDiffX = 0
+	local iDiffY = 0
+	local winThisResizeWin = win
+	-- No resizing for locked windows
+	if (WINDATA[winThisResizeWin]["LOCKED"] == true) then
+		return
+	end
+
+  local iResizeXEnd = WindowInfo(winThisResizeWin, 17)
+	local iResizeYEnd = WindowInfo(winThisResizeWin, 18)
+	--DebugNote("!= " .. string.sub(hotspot_id, 1, 5))
+	if (string.sub(hotspot_id, 1, 5) == "hsLRe") then
+		iDiffX = iResizeXStart - iResizeXEnd
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1) - iDiffX, WindowInfo(winThisResizeWin, 2), 0, 2)
+		--window_pos_x = WindowInfo(winThisResizeWin, 10)
+	elseif (string.sub(hotspot_id, 1, 5) == "hsBL1" or string.sub(hotspot_id, 1, 5) == "hsBL2") then
+		iDiffX = iResizeXStart - iResizeXEnd
+		iDiffY = iResizeYEnd - iResizeYStart
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1) - iDiffX, WindowInfo(winThisResizeWin, 2), 0, 2)
+		--window_pos_x = WindowInfo(winThisResizeWin, 10)
+	elseif (string.sub(hotspot_id, 1, 5) == "hsRRe") then
+		iDiffX = iResizeXEnd - iResizeXStart
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1), WindowInfo(winThisResizeWin, 2), 0, 2)
+	elseif (string.sub(hotspot_id, 1, 5) == "hsBRe") then
+		iDiffY = iResizeYEnd - iResizeYStart
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1), WindowInfo(winThisResizeWin, 2), 0, 2)
+	elseif (string.sub(hotspot_id, 1, 5) == "hsBR1" or string.sub(hotspot_id, 1, 5) == "hsBR2") then
+		iDiffX = iResizeXEnd - iResizeXStart
+		iDiffY = iResizeYEnd - iResizeYStart
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1), WindowInfo(winThisResizeWin, 2), 0, 2)
+	elseif (string.sub(hotspot_id, 1, 5) == "hsTL1" or string.sub(hotspot_id, 1, 5) == "hsTL2") then
+		iDiffX = iResizeXStart - iResizeXEnd
+		iDiffY = iResizeYStart - iResizeYEnd
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1) - iDiffX, WindowInfo(winThisResizeWin, 2) - iDiffY, 0, 2)
+	elseif (string.sub(hotspot_id, 1, 5) == "hsTR1" or string.sub(hotspot_id, 1, 5) == "hsTR2") then
+		iDiffX = iResizeXEnd - iResizeXStart
+		iDiffY = iResizeYStart - iResizeYEnd
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1), WindowInfo(winThisResizeWin, 2) - iDiffY, 0, 2)
+	elseif (string.sub(hotspot_id, 1, 5) == "hsTRe") then
+		iDiffY = iResizeYStart - iResizeYEnd
+		WindowPosition(winThisResizeWin, WindowInfo(winThisResizeWin, 1) , WindowInfo(winThisResizeWin, 2)- iDiffY, 0, 2)
+	end
+	iResizeXStart, iResizeYStart = WindowInfo(winThisResizeWin, 17), WindowInfo(winThisResizeWin, 18)
+	ResizeRedrawWindowGeneric(win, WINDATA[win]["WIDTH"] + iDiffX, WINDATA[win]["HEIGHT"] + iDiffY, "ShieldStatus")
+
+	UpdateWindow()
+end 
+
+-- Re-draw generic windows with global drag handlers again
+function ResizeRedrawWindowGeneric(winNewSize, iNewSizeX, iNewSizeY, sShortcut)
+	WINDATA[winNewSize]["WIDTH"] = iNewSizeX
+	WINDATA[winNewSize]["HEIGHT"] = iNewSizeY
+
+	
+	--Make sure it does not resize too small
+	if WINDATA[winNewSize]["WIDTH"] < WindowTextWidth (win, "f", "Twe: TPA") then
+		WINDATA[winNewSize]["WIDTH"] = WindowTextWidth (win, "f", "Twe: TPA")
+	end
+
+	if WINDATA[winNewSize]["HEIGHT"] < (WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])+WINDATA[win]["LINE_SPACING"]+(WINDATA[win]["PADDING"]*2) then
+		WINDATA[winNewSize]["HEIGHT"] = (WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])+WINDATA[win]["LINE_SPACING"]+(WINDATA[win]["PADDING"]*2)
+	end
+
+	WindowResize(winNewSize, WINDATA[winNewSize]["WIDTH"], WINDATA[winNewSize]["HEIGHT"], ColourNameToRGB("black"))
+	-- Change the drag-area hotspot
+	WindowMoveHotspot(winNewSize, "zz_mw_" .. winNewSize .. "_movewindow_hotspot", 0, 0, WINDATA[winNewSize]["WIDTH"], WINDATA[winNewSize]["HEIGHT"])
+  
+	-- And now update the window-edge areas
+	UpdateResizableWindow(winNewSize, sShortcut, WINDATA[winNewSize]["WIDTH"], WINDATA[winNewSize]["HEIGHT"])
+end
+
+function SetWindowSizes(iHeightPercent, iWidthPercent)
+	WINDATA[win]["WIDTH"] = WINDATA[win]["WIDTH"] / 100 * iWidthPercent
+	WINDATA[win]["HEIGHT"] = WINDATA[win]["HEIGHT"] / 100 * iHeightPercent
+end
+
+function SetFontSize(arg)
+	local varFontSize = tonumber(arg)
+	local iOldFontHeight = WINDATA[win]["FONT_HEIGHT"]
+	local iOldTextWidth = WINDATA[win]["TEXT_WIDTH"]
+
+	WindowFont (win, "f", WINDATA[win]["FONT"], varFontSize, false, false, false, false)
+	WindowFont (win, "f2", WINDATA[win]["FONT"], varFontSize, false, false, false, true) -- strikethrough
+	WindowFont (win, "f3", WINDATA[win]["FONT"], varFontSize, false, false, true, false) -- underline
+
+	WINDATA[win]["FONT_HEIGHT"] = WindowFontInfo (win, "f", 1)
+	local iPercentFontHeightChange = WINDATA[win]["FONT_HEIGHT"] / iOldFontHeight * 100
+
+	WINDATA[win]["TEXT_WIDTH"] = WindowTextWidth (win, "f", "TwelveTwelve TPA EFF")
+	local iPercentTextWidthChange = WINDATA[win]["TEXT_WIDTH"] / iOldTextWidth * 100
+
+	WINDATA[win]["FONT_SIZE"] = varFontSize
+
+	SetWindowSizes(iPercentFontHeightChange, iPercentTextWidthChange)
+	ResizeRedrawWindowGeneric(win, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], "ShieldStatus")
+	UpdateWindow()
+end
+
+function SetFont(arg)
+	--DebugNote("SFarg = "..arg)
+	local varFont = arg
+	local iOldFontHeight = WINDATA[win]["FONT_HEIGHT"]
+	local iOldTextWidth = WINDATA[win]["TEXT_WIDTH"]
+	WindowFont (win, "f", varFont, WINDATA[win]["FONT_SIZE"], false, false, false, false)
+	WindowFont (win, "f2", varFont, WINDATA[win]["FONT_SIZE"], false, false, false, true) -- strikethrough
+	WindowFont (win, "f3", varFont, WINDATA[win]["FONT_SIZE"], false, false, true, false) -- underline
+
+	WINDATA[win]["FONT_HEIGHT"] = WindowFontInfo (win, "f", 1)
+	local iPercentFontHeightChange = WINDATA[win]["FONT_HEIGHT"] / iOldFontHeight * 100
+
+	WINDATA[win]["TEXT_WIDTH"] = WindowTextWidth (win, "f", "TwelveTwelve TPA EFF")
+	local iPercentTextWidthChange = WINDATA[win]["TEXT_WIDTH"] / iOldTextWidth * 100
+	WINDATA[win]["FONT"] = varFont
+
+	SetWindowSizes(iPercentFontHeightChange, iPercentTextWidthChange)
+	ResizeRedrawWindowGeneric(win, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], "ShieldStatus")
+	UpdateWindow()
+
+end
+
+function GetColour(start_colour, sTime)
+	local iElapsedTime = os.difftime (os.time (),sTime)
+	if iElapsedTime <= iHighlightTime then return ColourNameToRGB("black") end
+		
+	percentage = 100 / (iSecondsToWhite / iElapsedTime)
+	if percentage > 100 then percentage = 100 end
+	return fade_RGB(start_colour, cWhite, percentage)
+end
+
+function NewGetColour(status, sTime)
+	if status == true then
+		start_colour = cLime
+	else
+		start_colour = cRed
+	end
+	local iElapsedTime = os.difftime (os.time (),sTime)
+		
+	percentage = 100 / (iSecondsToWhite / iElapsedTime)
+	if percentage > 100 then percentage = 100 end
+	return fade_RGB(start_colour, cWhite, percentage)
+end
+
+function fade_RGB(colour1, colour2, percentage)
+	
+	r1, g1, b1 = string.match(colour1, "#([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])")
+	r2, g2, b2 = string.match(colour2, "#([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])")
+	
+	r3 = tonumber(r1, 16)*(100-percentage)/100.0 + tonumber(r2, 16)*(percentage)/100.0
+    g3 = tonumber(g1, 16)*(100-percentage)/100.0 + tonumber(g2, 16)*(percentage)/100.0
+    b3 = tonumber(b1, 16)*(100-percentage)/100.0 + tonumber(b2, 16)*(percentage)/100.0
+	
+	return ColourNameToRGB ("#"..Dec2Hex(r3).. Dec2Hex(g3)..Dec2Hex(b3))
+end
+
+function RecalcHeight()
+	ExtraTitleLine = 0
+	if WINDATA[win]["TITLE"] == true then ExtraTitleLine = 1 end
+	local iExtraMinionHeight = 0
+	if bRecordFruitbat == true or bRecordSkeleton == true then
+		iExtraMinionHeight = 3
+	end
+	WINDATA[win]["HEIGHT"] = ((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iMiniwindowLines+ExtraTitleLine)-WINDATA[win]["LINE_SPACING"])+(WINDATA[win]["PADDING"]*2) + (ExtraTitleLine * 2) + iExtraMinionHeight
+	ResizeRedrawWindowGeneric(win, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], "ShieldStatus")
+	UpdateWindow()
+end
+
+--------------------------------------------------------------------------------
+--   MATH FUNCTIONS
+--------------------------------------------------------------------------------
+function Dec2Hex(nValue)
+	if type(nValue) == "string" then
+		nValue = String.ToNumber(nValue);
+	end
+	nHexVal = string.format("%X", nValue);  -- %X returns uppercase hex, %x gives lowercase letters
+	sHexVal = nHexVal.."";
+	if nValue < 16 then
+		return "0"..tostring(sHexVal)
+	else
+		return sHexVal
+	end
+end
+
+function TrimTitles(sName)
+	local sTrimName = sName
+	for i, v in ipairs (TitleList) do
+		--Tell(i..":"..v.."|")
+		if v .. " " == string.sub(sTrimName, 1, string.len(v .. " ")) then
+			sTrimName = string.sub(sTrimName, string.len(v) + 2)
+			break
+		end
+	end
+	sTrimName = string.match(sTrimName, "(%w+)") or "Unknown"
+	--This one is more specific and allows only letters
+	--sTrimName = string.match(sTrimName, "^(%a+)$") or string.match(sTrimName, "^(%a+) ") or "Unknown"
+	return sTrimName
+end
+
+function ShieldMateReset(sName, sLine, wildcards)
+	DebugNote("Resetting...")
+	iMiniwindowLines = 6
+	WINDATA = {
+		[win] = {
+			["TITLE"] = true,
+			["LOCKED"] = false,
+			["TITLE_COLOUR"] = "orange",
+			["TEXT_COLOUR"] = cWhite,
+			["BORDER_COLOUR"] = "fuchsia",
+			["FONT"] = "Consolas",
+			["FONT_SIZE"] = 10,
+			["PADDING"] = 2,
+			--Space to leave outside frame of miniwindow
+			--["OUTER_PADDING"] = 0,
+			["LINE_SPACING"] = 0,
+			}
+	}
+		
+	WindowFont (win, "f", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, false)
+	WindowFont (win, "f2", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, true) -- strikethrough
+	WindowFont (win, "f3", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, true, false) -- underline
+
+	ExtraTitleLine = 0
+	if WINDATA[win]["TITLE"] == true then ExtraTitleLine = 1 end
+	
+	WINDATA[win]["FONT_HEIGHT"] = WindowFontInfo (win, "f", 1)
+	WINDATA[win]["TEXT_WIDTH"] = WindowTextWidth (win, "f", "TwelveTwelve TPA EFF")
+	WINDATA[win]["WIDTH"] = WINDATA[win]["TEXT_WIDTH"]+(WINDATA[win]["PADDING"]*2)
+
+	if bRecordSkeleton == true then
+		iMiniwindowLines = iMiniwindowLines + 1
+	end
+	if bRecordFruitbat == true then
+		iMiniwindowLines = iMiniwindowLines + 1
+	end
+
+	local iExtraMinionHeight = 0
+	if bRecordFruitbat == true or bRecordSkeleton == true then
+		iExtraMinionHeight = 3
+	end
+	WINDATA[win]["HEIGHT"] = ((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iMiniwindowLines+ExtraTitleLine)-WINDATA[win]["LINE_SPACING"])+(WINDATA[win]["PADDING"]*2) + (ExtraTitleLine * 2) + iExtraMinionHeight
+	ResizeRedrawWindowGeneric(win, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], "ShieldStatus")
+
+	if wildcards ~= nil then
+		if wildcards[1] ~= nil and wildcards[1] == " full" then
+			WindowPosition(win, GetInfo(281)-WINDATA[win]["WIDTH"], GetInfo(280)-WINDATA[win]["HEIGHT"], 0, 2)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+--   START EXECUTION HERE
+--------------------------------------------------------------------------------
+
+win = "ShieldMate" .. GetPluginID ()
+WindowCreate (win, 0, 0, 0, 0, miniwin.pos_center_all, 0, ColourNameToRGB("black")) -- we must load the window before we can load fonts
+	
+--Load saved data
+if (GetVariable("WINDATA") ~= nil) then
+	WINDATA = json.decode(GetVariable("WINDATA"))
+	WindowFont (win, "f", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, false)
+	WindowFont (win, "f2", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, true) -- strikethrough
+	WindowFont (win, "f3", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, true, false) -- underline
+else
+	WINDATA = {
+		[win] = {
+			["TITLE"] = true,
+			["LOCKED"] = false,
+			["TITLE_COLOUR"] = "orange",
+			["TEXT_COLOUR"] = "white",
+			["BORDER_COLOUR"] = "fuchsia",
+			["FONT"] = "Consolas",
+			["FONT_SIZE"] = 10,
+			["PADDING"] = 2,
+			--Space to leave outside frame of miniwindow
+			--["OUTER_PADDING"] = 0,
+			["LINE_SPACING"] = 0,
+			}
+	}
+		
+	WindowFont (win, "f", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, false)
+	WindowFont (win, "f2", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, true) -- strikethrough
+	WindowFont (win, "f3", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, true, false) -- underline
+
+	
+	WINDATA[win]["FONT_HEIGHT"] = WindowFontInfo (win, "f", 1)
+	WINDATA[win]["TEXT_WIDTH"] = WindowTextWidth (win, "f", "TwelveTwelve TPA EFF")
+	WINDATA[win]["WIDTH"] = WINDATA[win]["TEXT_WIDTH"]+(WINDATA[win]["PADDING"]*2)
+
+	ExtraTitleLine = 0
+	if WINDATA[win]["TITLE"] == true then ExtraTitleLine = 1 end
+	if bRecordSkeleton == true then
+		iMiniwindowLines = iMiniwindowLines + 1
+	end
+	if bRecordFruitbat == true then
+		iMiniwindowLines = iMiniwindowLines + 1
+	end
+	WINDATA[win]["HEIGHT"] = ((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iMiniwindowLines+ExtraTitleLine)-WINDATA[win]["LINE_SPACING"])+(WINDATA[win]["PADDING"]*2) + (ExtraTitleLine * 2)
+
+end
+
+--list of NPCs to ignore if their shields break, '-' replaces with '.' for wildcard matching
+NPCList = {
+"nonna", "wizard", "witch", "Dave the Necromancer", "hag", "Sadel Noctus", "Rahn.fara.wai", "golden chicken", "Nhj",
+}
+
+--List of titles to remove for those on verbose names, note titles that match partially, like Old and Old Man make sure to have the longer one first
+TitleList = {
+"Miss", "Mr", "Mrs", "Ms", "Lonely", "Mournful", "Scary", "Spooky", "Wandering","Duelling", "Cheating", "Cowardly", "Doctor", "Dr", "Professor", "Brother", "Sister", "Mostly Reverend", "Reverend", "Blessed father", "Blessed mother", "Blessed brother", "Blessed sister", "Blessed", "Venerable brother", "Venerable sister", "Venerable father", "Venerable mother", "Venerable", "Holy brother", "Holy sister", "Holy", "Beatus", "Saint", "Butterfingers", "Crafty", "Crooked", "Dastardly", "Dishonest", "Dodgy", "Elusive", "Evasive", "Fingers", "Furtive", "Greased", "Honest", "Latent", "Light-fingered", "Quick-fingered", "Quiet", "Shady", "Shifty", "Silent", "Slick", "Sly", "Tricky", "Aunty", "Biddy", "Black", "Gammer", "Goodie", "Goody", "Gramma", "Granny", "Mama", "Mistress", "Mother", "Mss", "Nanna", "Nanny", "Sister", "Wee", "Wicked", "Young", "Fat", "Stuffed", "Over-fed", "Gimlet-eyed", "Robust", "Bearded", "Burly", "Plump", "Rotund", "Thin", "Tiny", "Mystic", "Obscure", "Complex", "Learned", "Potent", "Wise", "Grumpy", "Cryptic", "Dark", "Scholarly", "Grey-haired", "Greybeard", "Master", "Mistress", "Adroit", "Dire", "Maven", "Quantum", "Savant", "Unseen", "Archmaster", "Archmistress", "Archmage", "Dame", "Sir", "the Amazing", "the Civic-Minded", "the Elegant", "the Eloquent", "the Helpful", "the Helpful Citizen", "the Stylish", "the Upstanding Citizen", "the Utterly Fluffy", "the Wonderful", "appallingly filthy", "corpse looter", "dull", "feebleminded", "i got punished", "i got punished and all i got was this lousy title", "i promise i won't do it again", "insignificant", "lying", "malingering", "necrokleptomaniac", "offensive", "pillock", "pointless", "repentant", "reprobate", "shopkeeper murderer","silly spammy git", "sitting in the corner", "smelly", "tantrum thrower", "too stupid to live", "vagrant", "very sorry", "very very sorry", "waste of space", "whinging", "Sultan", "Sultana", "Shai al-khasa", "Sitt al-khasa", "Shai al-ri'asa", "Sitt al-ri'asa", "Shai ishquaraya", "Sitt ishquaraya", "Shai a'daha", "Sitt a'daha", "Nawab", "Qasar", "Mazrat", "Effendi", "Ya'uq", "Mutasharid", "Ishqaraya", "Kill Stealer", "Feebleminded", "Idiotic", "Offensive", "Corpse Looter", "Cat Hating", "Heathen", "Foreign Dog", "Infidel", "Shopkeeper Murderer", "Destitute", "Parasitic", "Hated", "Cowardly", "Criminal", "Felon", "M", "Mlle", "Mme", "Contender", "Venomous", "Ancient", "Exterminator", "Rouge", "Axe-master", "Champion", "Centurion", "Flatulent", "Competent", "Cultured", "Healer", "Cutthroat", "Knifey", "Archaic", "Lethal", "Elementalist", "Energetic", "Festive", "Gifted", "Chef", "Bloodthirsty", "Impaler", "Templar", "Paranoid", "Saintly", "Crusher", "Mysterious", "Arcana", "Diplomatic", "Duelist", "Perverse", "Masterful", "Fingers", "Medical", "Destined", "Unburiable", "Nasty", "Nimble", "Nurse", "Murse", "Obsolete", "Old Woman", "Old Man", "Old", "Crimewave", "Antiquated", "Fossilized", "Mythical", "Unlucky", "Pious", "Staffmistress", "Staffmaster", "Prehistoric", "Rock-hard", "Bruiser", "Pulveriser", "Literate", "Wealthy", "Senile", "Shieldmistress", "Shieldmaster", "Filthy", "Erratic Mechanic", "Legendary", "Swordmistress", "Swordmaster", "Terrible", "Ruinous", "Decrepit", "Headmistress", "Headmaster", "Multilingual", "Golden", "Unexpected", "Unstoppable", "Versatile", "Virtuoso", "Venerable", "Opulent", "Well travelled", "Persistent", "Debating", "Diplomatic", "Uncreative", "Her Eminence", "His Eminence", "Lord", "Lady", "Chunin", "around", "Duellist", "the ghost of", "ghost of", "the giant", "the", "Alim", "Darvish", "Mahir", "Sayyid", "Wadi", "Fateen", "Fudail", "Kareen", "Mujahid", "Murshid", "Asim", "Fedayeen", "Hussam", "Mukhtar", "Nasir", "Genin", "Jounin", "Chojin", "Karuma", "Osa", "Captain", "Stormrider"
+}
+
+WindowCreate (win, 0, 0, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], miniwin.pos_bottom_right, 4, ColourNameToRGB("white"))
+WindowPosition(win, GetInfo(281)-WINDATA[win]["WIDTH"]-1, GetInfo(280)-WINDATA[win]["HEIGHT"]-1, 0, 2)
+
+if (WINDATA[win]["POS_X"] ~= nil) and (WINDATA[win]["POS_Y"] ~= nil) then
+	WindowPosition(win, WINDATA[win]["POS_X"], WINDATA[win]["POS_Y"], 0, 2)
+end
+
+WindowShow (win,  true)
+CreateResizableWindow(win, "ShieldStatus", WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"])
+--Should bring to front, add as option later
+WindowSetZOrder(win, 200)
+
+UpdateWindow()
+
+
+]]>
+</script> 
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^font (.+)"
+   enabled="n"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+  if "%1" == "test" then
+	Note(WINDATA[win]["FONT"])
+  else
+	Note("Setting font to: ".. "%1")
+	SetFont("%1")
+  end
+  </send>
+  </alias> 
+  <alias
+   match="^fontsize (.+)"
+   enabled="n"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+  if "%1" == "test" then
+	Note(WINDATA[win]["FONT_SIZE"])
+  else
+	Note("Setting size to: ".. "%1")
+	SetFontSize("%1")
+  end
+  </send>
+  </alias> 
+  <alias
+   match="^sm remove (.+)"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	if GroupMember["%1"] ~= nil then
+		if GroupMember[k]["status"] == "active"	then
+			GroupMember[k]["status"] = "inactive"		
+			iTotalGroupMembers = iTotalGroupMembers - 1
+			WindowDeleteHotspot (win, "aname_"..k)
+			DebugNote(k .. " set to inactive.")
+			UpdateWindow()
+		else
+			ColourNote("violet", "", "'".. "%1".."' was already removed.")
+		end
+	else
+		ColourNote("violet", "", "Unknown name '".. "%1".."'.")
+	end
+  </send>
+  </alias> 
+  <!-- Enable for 'smr' to remove, disabled by default for players who use such an alias -->
+  <alias
+   match="^smr (.+)"
+   enabled="n"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	if GroupMember["%1"] ~= nil then
+		if GroupMember[k]["status"] == "active"	then
+			GroupMember[k]["status"] = "inactive"		
+			iTotalGroupMembers = iTotalGroupMembers - 1
+			WindowDeleteHotspot (win, "aname_"..k)
+			DebugNote(k .. " set to inactive.")
+			UpdateWindow()
+		else
+			ColourNote("violet", "", "'".. "%1".."' was already removed.")
+		end
+	else
+		ColourNote("violet", "", "Unknown name '".. "%1".."'.")
+	end
+  </send>
+  </alias> 
+        <alias
+            match="^sm reset( full)?$"
+            enabled="y"
+			regexp="y"
+            ignore_case="y"
+            sequence="30"
+            script="ShieldMateReset"
+        ></alias>
+        <alias
+            match="sm help"
+            enabled="y"
+            ignore_case="y"
+            sequence="30"
+            script="DisplayHelp"
+        ></alias>
+</aliases>
+
+<!--  Triggers  -->
+<triggers> 
+
+  <!-- NEW TRIGGERS FROM QUOW'S -->
+  <!-- TPA for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?With a noise that sounds like &quot;Plink!&quot;, everything around you flashes (?>yellow|red) for a moment\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield_YNU_TPA"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?There is a sudden white flash\.  Your magical shield has broken\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield_YND_TPA"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?With a noise that sounds like &quot;Plink!&quot;, the air around (?P<player>(?:\w+\b\W*?){1,8}) flashes (?>yellow|red) for a moment\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield_ONU_TPA"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?There is a sudden white flash around (?P<player>(?!a passing wizard)(?:\w+\b\W*?){1,8})\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield_OND_TPA"
+   group="module_shields"
+  >
+  </trigger>
+  <!-- Bugs for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?>Buzzing drowsily, t|Buzzing loudly, t|Buzzing threateningly, t|Clicking and buzzing, t|Whirring gently, t|Rather clumsily, t|With a rasping noise, t|With a high-pitched whining noise, t|With a low, menacing buzzing, t|With a buzzing sound so loud and meaty it's almost like a dog growling, t|T)he (?>handful|cloud|small swarm|large swarm|vast swarm|plague) of (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) (?>flutters into a loosely-formed orbit around |forms a chaotic web of small white bodies around |starts to hover near |begins to circle around |begins to circle |begins to orbit |begins to cluster around |begins to buzz erratically around |begins to buzz around |flutters into a chaotic formation around |clusters haphazardly around )you"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield_YNU_KII"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?The (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) surrounding you scatter in different directions and fly off\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield1_YND_KII"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?The last of the injured (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|winged termites|termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) surrounding you crash to the ground\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield2_YND_KII"
+   group="module_shields"
+  >
+  </trigger>
+  <!-- Major for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You are protected by the power of (?>Pishe|Gufnork|Gapp|Sandelfon|Fish|Hat|Sek|Aegadon|Cubal|Reebox)\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield_YNU__MS"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Your divine protection expires\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield_YND__MS"
+   group="module_shields"
+  >
+  </trigger>
+  <!-- EFF for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<effitem>(?:\w+\b\W*?){1,6}) begins to float around you\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield_YNU_EFF"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?In blocking the attack (?P<effitem>(?:\w+\b\W*?){1,6}) floating around you is knocked out of orbit\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield1_YND_EFF"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You realise that (?P<effitem>(?:\w+\b\W*?){1,6}) is no longer floating around you\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield2_YND_EFF"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<effitem>(?:\w+\b\W*?){1,6}) floating around you breaks!$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield3_YND_EFF"
+   group="module_shields"
+  >
+  </trigger>
+  <!-- CCC for YOU -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?:You feel your skin (?:become elastic as rubber|become rock hard|tingle as the metal powder fuses together into thin metal bands, forming a net-like shape)|(?:Your skin feels .+ (?:more elastic|harder)|The metallic network on your skin feels .+ stronger) now|Your skin is (?:now|already) as (?:hard|elastic|thickly covered) as it can get)\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield1_YNU_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Your skin feels itchy; large pieces flake off as you scratch it\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield1_YND_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?With a brief flash of magic, your (?:stony|metallic|elastic) skin falls away\.$"
+   regexp="y"
+   sequence="12"
+   script="HandleShieldData"
+   name="ArcaneShield2_YND_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <!-- CCC for 3rd Party -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<player>(?:\w+\b\W*?){1,8})'s skin becomes (?>elastic as rubber|rock hard)\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield1_ONU_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?The metal powder fuses together into metal bands on (?P<player>(?:\w+\b\W*?){1,8})'s skin\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield2_ONU_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<player>(?:\w+\b\W*?){1,8})'s skin becomes (?:harder|more springy)\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield3_ONU_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?The metallic network on (?P<player>(?:\w+\b\W*?){1,8})'s skin becomes stronger\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield4_ONU_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<player>(?:\w+\b\W*?){1,8}) scratches (?>himself|herself|itself), and large pieces of skin flake off\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield1_OND_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?There is a brief flash of magic, and something falls away from (?P<player>(?:\w+\b\W*?){1,8})'s skin\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield2_OND_CCC"
+   group="module_shields"
+  >
+  </trigger>
+  <!-- Bugs for OTHER players -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?>Buzzing drowsily, t|Buzzing loudly, t|Buzzing threateningly, t|Clicking and buzzing, t|Whirring gently, t|Rather clumsily, t|With a rasping noise, t|With a high-pitched whining noise, t|With a low, menacing buzzing, t|With a buzzing sound so loud and meaty it's almost like a dog growling, t|T)he (?>handful|cloud|small swarm|large swarm|vast swarm|plague) of (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) (?>flutters into a loosely-formed orbit around |forms a chaotic web of small white bodies around |starts to hover near |begins to circle |begins to circle around |begins to orbit |begins to cluster around |begins to buzz erratically around |begins to buzz around |flutters into a chaotic formation around |cluster haphazardly around )(?P<player>(?:\w+\b\W*?){1,8})(?:| happily| slowly|, chirping gently|, buzzing hungrily)\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield_ONU_KII"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?The (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) surrounding (?P<player>(?:\w+\b\W*?){1,8}) scatter in different directions and fly off\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield1_OND_KII"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?The last of the injured (?>lacewings|stick insects|mayflies|praying mantids|butterflies|ladybirds|dragonflies|damselflies|moths|grasshoppers|winged termites|sandflies|mosquitoes|gnats|crickets|flying ants|locusts|horseflies|cicadas|bees|wasps|hornets|elephant beetles|assassin bugs) surrounding (?P<player>(?:\w+\b\W*?){1,8}) crash to the ground\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield2_OND_KII"
+   group="module_shields"
+  >
+  </trigger>
+  <!-- EFF for OTHER players -->
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<effitem>(?:\w+\b\W*?){1,6}) begins to float around (?P<player>(?:\w+\b\W*?){1,8})\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield_ONU_EFF"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?In blocking the attack (?P<effitem>(?:\w+\b\W*?){1,6}) floating around (?P<player>(?:\w+\b\W*?){1,8}) is knocked out of orbit\.$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield1_OND_EFF"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<effitem>(?:\w+\b\W*?){1,6}) floating around (?P<player>(?:\w+\b\W*?){1,8}) breaks!$"
+   regexp="y"
+   sequence="14"
+   script="HandleShieldData"
+   name="ArcaneShield2_OND_EFF"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^(?:> )?(.+ deals the death blow to the skeleton warrior|You kill the skeleton warrior|The skeleton warrior dies|The skeleton warrior turns to dust)\.$"
+   regexp="y"
+   sequence="14"
+   script="DieMinion"
+   name="SkeletonWarriorDeadOld"
+   group="module_shields"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(A skeleton crumbles into dust and blows away|The skeleton warrior dissolves into dust(?:\.  Everything he carried drops to the ground)?)\.$"
+   regexp="y"
+   sequence="14"
+   script="DieMinion"
+   name="SkeletonWarriorDead"
+   group="module_shields"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?:.+ deals the death blow to .*the giant fruitbat|You kill .*he giant fruitbat|.*he giant fruitbat dies)\.$"
+   regexp="y"
+   sequence="14"
+   script="DieMinion"
+   name="FruitbatDead"
+   group="module_shields"
+  >
+  </trigger>
+
+  
+</triggers>
+<timers>
+  <timer name="tic" enabled="y" minute="0" second="1.00" offset_second="0.00"    send_to="12"
+>
+  <send>  
+	UpdateWindow()
+  </send>
+  </timer>
+
+  <timer name="flash" enabled="n" minute="0" second="1.00" offset_second="0.00"    send_to="12"
+>
+  <send>  
+	ToggleFlash()
+  </send>
+  </timer>
+
+  </timers>
+  
+</muclient>	

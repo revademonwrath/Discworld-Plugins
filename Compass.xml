@@ -1,0 +1,488 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<!-- Displays compass of sailing directions in miniwindow, by Reva -->
+<!-- Commands: compass <on\off\direction> NOTE: can abbreviate directions like 'r' or 'wh' or 'w-h'-->
+
+<muclient>
+<plugin
+   name="Compass"
+   author="Reva"
+   id="45bbec677bdefeef675562c4"
+   language="Lua"
+   purpose="Display Sailing Compass in Miniwindow"
+   date_written="2020-07-13"
+   save_state="y"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<script>
+<![CDATA[
+function OnPluginSaveState()
+	SetVariable ("sThisNorth", sThisNorth)
+	SetVariable ("bShowWindow", tostring(bShowWindow))
+	SetVariable ("bFirstTime", tostring(bFirstTime))
+	SetVariable ("window_pos_x", WindowInfo (win, 10))
+	SetVariable ("window_pos_y", WindowInfo (win, 11))
+end -- function OnPluginSaveState
+
+sThisNorth = "hubwards"
+if GetVariable("sThisNorth") ~= nil then
+	sThisNorth = GetVariable("sThisNorth")
+end
+
+function OnPluginEnable ()
+	WindowShow (win,  true)
+end
+
+function OnPluginDisable()
+	WindowShow (win,  false)
+end
+
+function OnPluginClose ()
+	WindowShow (win,  false)
+end
+
+--compass points 1-8 going clockwise
+--[[
+tPoints = {
+"hubwards",
+"widdershins-hubwards",
+"widdershins",
+"widdershins-rimwards",
+"rimwards", 
+"turnwise-rimwards",
+"turnwise",
+"turnwise-hubwards",
+}
+]]--
+sSize = "full"
+tPoints = {
+"hubwards",
+"widdershins-hubwards",
+"widdershins",
+"widdershins-rimwards",
+"rimwards", 
+"turnwise-rimwards",
+"turnwise",
+"turnwise-hubwards",
+}
+
+tPointsConversion = {
+["full"] = {
+	"hubwards",
+	"widdershins-hubwards",
+	"widdershins",
+	"widdershins-rimwards",
+	"rimwards", 
+	"turnwise-rimwards",
+	"turnwise",
+	"turnwise-hubwards",
+	},
+["medium"] = {
+	"hubwards",
+	"widdershins-hubwards",
+	"widdershins",
+	"widdershins-rimwards",
+	"rimwards", 
+	"turnwise-rimwards",
+	"turnwise",
+	"turnwise-hubwards",
+	},
+["short"] = {
+	"hubwards",
+	"widdershins-hubwards",
+	"widdershins",
+	"widdershins-rimwards",
+	"rimwards", 
+	"turnwise-rimwards",
+	"turnwise",
+	"turnwise-hubwards",
+	}
+}
+
+--compass points 1-8 going clockwise
+DirConversions = {
+["h"] =	 "hubwards",
+["wh"] = "widdershins-hubwards",
+["w-h"] = "widdershins-hubwards",
+["w"] = "widdershins",
+["wr"] = "widdershins-rimwards",
+["w-r"] = "widdershins-rimwards",
+["r"] = "rimwards", 
+["tr"] = "turnwise-rimwards",
+["t-r"] = "turnwise-rimwards",
+["t"] = "turnwise",
+["th"] = "turnwise-hubwards",
+["t-h"] = "turnwise-hubwards",
+["hub"] =	 "hubwards",
+["widhub"] = "widdershins-hubwards",
+["wid-hub"] = "widdershins-hubwards",
+["wid"] = "widdershins",
+["widrim"] = "widdershins-rimwards",
+["wid-rim"] = "widdershins-rimwards",
+["rim"] = "rimwards", 
+["turnrim"] = "turnwise-rimwards",
+["turn-rim"] = "turnwise-rimwards",
+["turn"] = "turnwise",
+["turnhub"] = "turnwise-hubwards",
+["turn-hub"] = "turnwise-hubwards",
+}
+
+function DetermineCompass(nUp)
+	if nUp == nil then nUp = "rimwards" end
+	
+	local thisCompass = tPoints
+
+	local iNorthNumber
+	local bFound = false
+	for i, v in ipairs (thisCompass) do
+		if v == nUp then
+			iNorthNumber = i
+			bFound = true
+			break
+		end
+	end
+		
+	if bFound == false then
+		Note("Error, direction unknown for compass north, switching to rimwards.")
+		nUp = "rimwards"
+		iNorthNumber = 1
+	end
+
+	for i, v in ipairs (thisCompass) do
+		if i < iNorthNumber then
+			table.insert(thisCompass, v)
+		else
+			break
+		end
+	end
+
+	while iNorthNumber > 1 do
+		table.remove(thisCompass, iNorthNumber - 1)
+		iNorthNumber = iNorthNumber - 1
+	end
+
+
+	return thisCompass
+end
+
+
+--------------------------------------------------------------------------------
+--   MAIN WINDOW
+--------------------------------------------------------------------------------
+function DisplayMiniwindow()
+	--Do not update while dragging or it stops the dragging
+	if bDragging == true then 
+		--DebugNote("Not updated bec. of dragging.")
+		return 
+	end
+
+	local thisCompass = DetermineCompass(sThisNorth)
+
+	WindowRectOp (win, 2, 0, 0, window_width, window_height, ColourNameToRGB("black"))-- clears the window so old frame doesn't show
+	WindowCircleOp (win, 3, 0, 0, window_width, window_height, ColourNameToRGB("salmon"), 0, window_border, ColourNameToRGB(cBack), 0, 15, 15)
+
+	local iLine = 1
+	local sText = thisCompass[1]
+	local iFWidth = WindowTextWidth (win, "f", sText)
+	local iIndent = (window_width -iFWidth)/2
+	WindowText (win, "f", sText, iIndent, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	iLine = iLine + 1
+
+	local sTextCentre = "  ^  "
+	local sTextLeft = thisCompass[8]
+	local sTextRight = thisCompass[2]
+	local iCWidth = WindowTextWidth (win, "f", sTextCentre)
+	local iLWidth = WindowTextWidth (win, "f", sTextLeft)
+	local iRWidth = WindowTextWidth (win, "f", sTextRight)
+	local iIndent = (window_width -iCWidth)/2
+	WindowText (win, "f", sTextCentre, iIndent, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	WindowText (win, "f", sTextLeft, iIndent - iLWidth, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	WindowText (win, "f", sTextRight, iIndent + iCWidth, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	iLine = iLine + 1
+
+	local sText = "\\  | /"
+	local iFWidth = WindowTextWidth (win, "f", sText)
+	local iIndent = (window_width -iFWidth)/2
+	WindowText (win, "f", sText, iIndent, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	iLine = iLine + 1
+
+	local sTextCentre = " <- ship -> "
+	local sTextLeft = thisCompass[7]
+	local sTextRight = thisCompass[3]
+	local iCWidth = WindowTextWidth (win, "f", sTextCentre)
+	local iLWidth = WindowTextWidth (win, "f", sTextLeft)
+	local iRWidth = WindowTextWidth (win, "f", sTextRight)
+	local iIndent = (window_width -iCWidth)/2
+	WindowText (win, "f", sTextCentre, iIndent, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	WindowText (win, "f", sTextLeft, iIndent - iLWidth, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	WindowText (win, "f", sTextRight, iIndent + iCWidth, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	iLine = iLine + 1
+
+	local sText = "/  | \\"
+	local iFWidth = WindowTextWidth (win, "f", sText)
+	local iIndent = (window_width -iFWidth)/2
+	WindowText (win, "f", sText, iIndent, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	iLine = iLine + 1
+
+	local sTextCentre = "   v  "
+	local sTextLeft = thisCompass[6]
+	local sTextRight = thisCompass[4]
+	local iCWidth = WindowTextWidth (win, "f", sTextCentre)
+	local iLWidth = WindowTextWidth (win, "f", sTextLeft)
+	local iRWidth = WindowTextWidth (win, "f", sTextRight)
+	local iIndent = (window_width -iCWidth)/2
+	WindowText (win, "f", sTextCentre, iIndent, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	WindowText (win, "f", sTextLeft, iIndent - iLWidth, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	WindowText (win, "f", sTextRight, iIndent + iCWidth, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+	iLine = iLine + 1
+
+	local sText = thisCompass[5]
+	local iFWidth = WindowTextWidth (win, "f", sText)
+	local iIndent = (window_width -iFWidth)/2
+	WindowText (win, "f", sText, iIndent, window_padding + (font_height * (iLine - 1)), 0, 0,	ColourNameToRGB(cText), false) -- not Unicode
+
+	WindowAddHotspot(win, "whole", window_padding, window_padding, window_width - window_padding,window_height - window_padding,   --rectangle
+				 "",   -- MouseOver
+				 "",   -- CancelMouseOver
+				 "mousedown",
+				 "cancelmousedown", 
+				 "mouseup", 
+				 "Click to drag, right click for options",  -- tooltip text
+				 10, 0)  -- hand cursor
+	WindowDragHandler(win, "whole", "dragmove", "dragrelease", 0) 
+end
+
+--------------------------------------------------------------------------------
+--   DRAG AND HOTSPOT HANDLERS
+--------------------------------------------------------------------------------
+function mousedown(flags, hotspot_id)
+	if hotspot_id == "whole" then
+		startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
+	end
+end -- mousedown
+
+function cancelmousedown(flags, hotspot_id)
+end -- cancelmousedown
+
+function mouseup(flags, hotspot_id)
+end -- mouseup
+
+bDragging = false
+function dragmove(flags, hotspot_id)
+	bDragging = true
+	if hotspot_id == "whole" then
+		local posx, posy = WindowInfo (win, 17), WindowInfo (win, 18)
+		-- move the window to the new location
+		WindowPosition(win, posx - startx, posy - starty, 0, 2)
+  
+		-- change the mouse cursor shape appropriately
+		if posx < 0 or posx > GetInfo (281) or posy < 0 or posy > GetInfo (280) then
+			check (SetCursor ( 11))   -- X cursor
+		else
+			check (SetCursor ( 1))   -- hand cursor
+		end -- if
+	end
+end -- dragmove
+
+function dragrelease(flags, hotspot_id)
+end -- dragrelease
+
+sSize = "large"
+function CalcWindowSize()
+	
+	sLongestText = "ship"
+	for i, v in ipairs (tPoints) do
+		if string.len(sLongestText) < string.len(v) then
+			sLongestText = v
+		end
+	end
+
+	iWindowTextWidth = WindowTextWidth (win, "f", sLongestText .. " <- ship -> " .. sLongestText)
+
+	window_padding = 2
+	window_width = iWindowTextWidth + (window_padding * 2)
+
+	--should be seven lines...
+	window_height = (font_height * 7) + (window_padding * 2)
+
+	WindowResize(win, window_width, window_height, ColourNameToRGB(cBack))
+
+--long WindowResize(win, long Width, long Height, long BackgroundColour);
+--WindowCreate (win, 0, 0, window_width, window_height, miniwin.pos_center_all, 4, ColourNameToRGB(cBack))
+--long WindowCreate(BSTR WindowName, long Left, long Top, long Width, long Height, short Position, long Flags, long BackgroundColour);
+end
+
+function ChangeCompassSize(sName, sLine, wildcards)
+	if wildcards.size == nil then
+		ColorNote("salmon", "", "Compass size is '"..sSize.."'.")
+	elseif string.lower(wildcards.size) == "sSize" then
+		ColorNote("salmon", "", "Compass size already '"..sSize.."'.")
+	else
+		sSize = string.lower(wildcards.size)
+		ColorNote("salmon", "", "Changing compass size to '"..sSize.."'.")
+		CalcWindowSize()
+	end
+end
+--------------------------------------------------------------------------------
+--   START EXECUTION HERE
+--------------------------------------------------------------------------------
+
+win = "compass" .. GetPluginID ()
+cText = "white"
+cBack = "black"
+WindowCreate (win, 0, 0, 0, 0, miniwin.pos_center_all, 0, ColourNameToRGB(cBack)) -- we must load the window before we can load fonts
+	
+font_size = 8
+WindowFont (win, "f", "Consolas", font_size, false, false, false, false)
+
+font_height = WindowFontInfo (win, "f", 1)
+
+sLongestText = "ship"
+for i, v in ipairs (tPoints) do
+	if string.len(sLongestText) < string.len(v) then
+		sLongestText = v
+	end
+end
+
+iWindowTextWidth = WindowTextWidth (win, "f", sLongestText .. " <- ship -> " .. sLongestText)
+
+window_padding = 2
+window_width = iWindowTextWidth + (window_padding * 2)
+
+--should be seven lines...
+window_height = (font_height * 7) + (window_padding * 2)
+
+WindowCreate (win, 0, 0, window_width, window_height, miniwin.pos_center_all, 4, ColourNameToRGB(cBack))
+
+window_border = 2
+window_pos_x = tonumber(GetVariable("window_pos_x"))
+window_pos_y = tonumber(GetVariable("window_pos_y"))
+
+if (type(window_pos_x) == "number") and (type(window_pos_x) == "number") then
+	WindowPosition(win, window_pos_x, window_pos_y, 0, 2)
+else
+	WindowPosition(win, 0, 0, miniwin.pos_center_all, 2)
+end
+
+
+--turnwise-rimwards <- ship -> widdershins-hubwards
+bShowWindow = true
+if GetVariable("bShowWindow") == "false" then
+	bShowWindow = false
+end
+
+WindowShow (win,  bShowWindow)
+
+bFirstTime = true
+if GetVariable("bFirstTime") == "false" then
+	bFirstTime = false
+end
+
+if bFirstTime == true then
+	DoAfterSpecial (1.5, 'DisplayHelp()', sendto.script)
+	bFirstTime = false
+end
+
+function DisplayHelp()
+	ColourNote("Salmon", "", 
+	[[
+	
+	Compass Plugin Help - by Reva
+	-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+	
+	* Mouse-over the window to drag.
+		
+	* Commands for Compass Window are:
+	 'compass help' - This help dialog.
+	 'compass[ <on\off>]' - Turn\toggle compass window on or off.
+	 'compass <direction>' - Change north direction on compass.  Can use abbeviations such as 'r', 't-r', 'tr'.
+	 'compass reset' - Reset plugin.
+		
+	Questions or comments, please contact me.
+	]])
+end
+
+function CompassReset()
+	bShowWindow = true
+	sThisNorth = "hubwards"
+	WindowPosition(win, 0, 0, miniwin.pos_center_all, 2)
+	DisplayMiniwindow()
+	WindowShow(win, bShowWindow)
+end
+
+--Should bring to front, add as option later
+WindowSetZOrder(win, 2000)
+
+DisplayMiniwindow()
+--(on|off|hubwards|widdershins-hubwards|widdershins|widdershins-rimwards|rimwards|turnwise-rimwards|turnwise|turnwise-hubwards|h|wh|w|wr|r|tr|t|th)
+
+]]>
+</script> 
+<!--  Aliases  -->
+<aliases>
+	<alias
+		match="^compass(?: (help|reset|on|off|hubwards|widdershins-hubwards|widdershins|widdershins-rimwards|rimwards|turnwise-rimwards|turnwise|turnwise-hubwards|h|w-?h|w|w-?r|r|t-?r|t|t-?h))?$"
+		regexp="y"
+		enabled="y"
+		ignore_case="y"
+		sequence="30"
+		send_to="12"
+	>
+	<send>
+		if "%1" == "" then
+			if bShowWindow == true then
+				ColourNote("salmon", "", "Closing compass window.")
+				bShowWindow = false
+				WindowShow(win, bShowWindow)
+			else
+				ColourNote("salmon", "", "Showing compass window.")
+				bShowWindow = true
+				WindowShow(win, bShowWindow)
+			end
+		elseif "%1" == "help" then
+			DisplayHelp()
+		elseif "%1" == "reset" then
+			CompassReset()
+			ColourNote("salmon", "", "Compass window reset.")
+		elseif "%1" == "on" then
+			if bShowWindow == true then
+				ColourNote("salmon", "", "Compass window already showing.")
+			else
+				ColourNote("salmon", "", "Showing compass window.")
+				bShowWindow = true
+				WindowShow(win, bShowWindow)
+			end
+		elseif "%1" == "off" then
+			if bShowWindow == true then
+				ColourNote("salmon", "", "Closing compass window.")
+				bShowWindow = false
+				WindowShow(win, bShowWindow)
+			else
+				ColourNote("salmon", "", "Compass window already closed.")
+			end
+		else
+			for i, v in ipairs (tPoints) do
+				if v == string.lower("%1") or v == DirConversions[string.lower("%1")] then
+					if bShowWindow == true then 
+						sThisNorth = v
+						ColourNote("salmon", "", "Repositioning compass with '" ..v .. "' as up.")
+						DisplayMiniwindow()
+					else
+						ColourNote("salmons", "", "Compass window is closed, 'compass on' to show.")
+					end
+					break
+				end
+			end
+		end
+	</send>
+	</alias>
+</aliases>
+<!--  Triggers  -->
+<triggers> 
+</triggers>
+	  
+</muclient>
+
+

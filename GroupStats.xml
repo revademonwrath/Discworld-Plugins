@@ -1,0 +1,807 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- GroupStats by Reva -->
+<!-- 'gstats' for stats from this session, 'gstats cur[rent]' for current stats, 'gstats last' for last stats, 'gstats all' for all saved stats. -->
+<!-- 'ggstats' to group say stats from this session, 'ggstats cur[rent]' to group say current stats, 'ggstats last' to group say last stats, -->
+<!--  'ggstats all' to group say all saved stats. -->
+<!-- 'gstats reset\new' to remove list of saved stats -->
+
+<!-- Change sMyName (line 16) from Unknown to your name for times when groupleader is 'You'. -->
+
+<muclient>
+<script>
+<![CDATA[
+
+sMyName = "Unknown"
+LeadingStats = {}
+LeadingStats["leader"]= "Unknown"
+GroupStats = {}
+--Number of days to save stats for, 0 for forever
+KeepEntries = 3
+
+function DisplaygHelp()
+	Note("")
+	ColourNote("mediumspringgreen", "", "GroupStat Commands:")
+	ColourNote("mediumspringgreen", "", "'ghelp' for this list of commands.")
+	ColourNote("mediumspringgreen", "", "'gleader' set current leader if unknown, or start a new leader.")
+	ColourNote("mediumspringgreen", "", "'gchange' switch name of current leader.")
+	ColourNote("mediumspringgreen", "", "'gstats' for all previous stats, 'gstats cur[rent]' for current stats, 'gstats last' for last stats.")
+	ColourNote("mediumspringgreen", "", "'ggstats' to group say all previous stats, 'ggstats cur[rent]' to group say current stats, 'ggstats last' to group say last stats.")
+	Note("")
+end
+
+--------------------------------------------------------------------------------
+--   INSTALL AND SAVE
+--------------------------------------------------------------------------------
+--[[
+require "serialize"  -- needed to serialize table to string
+
+function OnPluginInstall ()
+	assert (loadstring (GetVariable ("GroupStats") or "")) ()
+	--Remove old entries
+	if KeepEntries == 0 then return end
+	for i, v in ipairs (GroupStats) do
+		iHowOld = os.difftime (os.time (), v[4])  
+		if iHowOld > KeepEntries * 86400 then
+			table.remove(GroupStats, i)
+		end
+	end
+end -- function OnPluginInstall
+
+function OnPluginSaveState ()
+	for i, v in ipairs (GroupStats) do
+		v[5] = false
+	end
+  SetVariable ("GroupStats", 
+               "GroupStats = " .. serialize.save_simple (GroupStats))
+end -- function OnPluginSaveState
+]]--
+
+function GroupInvite(sName, sLine, wildcards)
+--	Note("DEBUG - invited")
+	PotentialLeader = wildcards.groupleader
+	EnableTrigger("JoinGroup", true)
+end
+
+function GroupJoin(sName, sLine, wildcards)
+--	Note("DEBUG - joined")
+	--if PotentialLeader ~= nil then LeadingStats["leader"] = PotentialLeader end
+	StartLead(PotentialLeader)
+	EnableTrigger("JoinGroup", false)
+end
+
+function StartLead (sLeader)
+	if sLeader ~= nil and sLeader ~= "" then
+		LeadingStats["leader"] = sLeader
+	else
+		LeadingStats["leader"] = "Unknown"
+	end
+	if LeadingStats["leader"]== "Unknown" then
+		EnableTrigger("GroupAssistLeaderDetect", true)
+	end
+	
+	LeadingStats["start"] = os.time()
+	if CharVitals.xp ~= nil then
+		LeadingStats["xp"] = CharVitals.xp
+		StartXP = Kify(CharVitals.xp)
+	else 
+		LeadingStats["xp"] = nil
+		StartXP = "Unknown"
+	end
+	if LeadingStats.leader ~= "Unknown" and StartXP ~= "Unknown" then
+		ColourNote("mediumspringgreen", "", "Recording lead... '".. LeadingStats.leader .. "' leading, '" .. StartXP .. "' starting xp.")
+	end
+	--AddTimer ("FiveMinuteWarning", 0, 55, 0, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "FiveMinuteWarning")
+	--AddTimer ("HourWarning", 1, 00, 0, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "HourWarning")
+end
+
+function AssistLeaderDetect(sName, sLine, wildcards)
+	if LeadingStats["leader"] == "Unknown" then
+		LeadingStats["leader"] = wildcards.groupleader
+		EnableTrigger("GroupAssistLeaderDetect", false)
+	end	
+end
+
+function FiveMinuteWarning(sName)
+	ColourNote("mediumspringgreen", "", "'" .. LeadingStats.leader .. "' has been leading for 55 minutes!")	
+end
+
+function HourWarning(sName)
+	ColourNote("mediumspringgreen", "", "'" .. LeadingStats.leader .. "' has been leading for an hour!")	
+end
+
+function EndLead (sLeader)
+--Note("DEBUG - end lead")
+	--CHANGE TO 0, was just like this for testing!!
+	GainedXP = 0
+	LeadingTime = 0
+	XPRate = 0
+	WasLeader = "Unknown"
+	
+	--Figure out who was leading
+	if sLeader ~= nil and sLeader ~= "" then
+	  WasLeader = sLeader
+	elseif LeadingStats.leader ~= nil then
+		WasLeader = LeadingStats.leader
+	end
+	if LeadingStats.xp ~= nil and CharVitals.xp ~= nil then 
+		GainedXP = tonumber(CharVitals.xp) - tonumber(LeadingStats.xp) 
+	end
+	if LeadingStats.start ~= nil then 
+		LeadingTime = os.difftime (os.time (), LeadingStats.start)  
+	end
+	if LeadingTime > 0 then 
+		XPRate = (GainedXP / LeadingTime) * 3600 
+	end
+	DisplayGainedXP = Kify(GainedXP)
+	DisplayLeadingTime = TimeFormat(LeadingTime)
+	DisplayXPRate = Kify(XPRate)
+
+	if LeadingTime ~= 0 then
+		ColourNote("mediumspringgreen", "", "Leader '"..WasLeader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)")
+	end
+	table.insert(GroupStats, {WasLeader,GainedXP,LeadingTime, os.time(), true})
+end
+
+
+--Change of leader
+function LeaderChange(sName, sLine, wildcards)	
+	EndLead(wildcards.oldleader)
+	StartLead(wildcards.newleader)
+end
+
+--Manual Change of leader
+function ManualLeaderChange(sNewLeader)	
+	if LeadingStats["leader"] == "Unknown" then
+		ColourNote("mediumspringgreen", "", "Leader set to '" .. sNewLeader .. "'.")
+		LeadingStats["leader"] = sNewLeader
+		sLeader = sNewLeader
+	else
+		EndLead()
+		StartLead(sNewLeader)
+	end
+end
+
+function LeaderFix(sFixName)
+	if string.lower(sFixName) == string.lower(LeadingStats["leader"]) then
+		ColourNote("mediumspringgreen", "", "Leader is already '" .. LeadingStats["leader"] .. "'.")
+	else
+		LeadingStats["leader"] = sFixName
+		ColourNote("mediumspringgreen", "", "Leader changed to '" .. sFixName .. "'.")
+	end
+end
+
+--Leader left group
+function GroupLeaderLeft(sName, sLine, wildcards)
+	EndLead()
+end
+
+--Random leader selected
+function GroupRandomLeader(sName, sLine, wildcards)
+	if wildcards.groupleader == "You" and sMyName ~= "Unknown" then
+		NewLeader = sMyName
+	else
+		NewLeader = wildcards.groupleader
+	end
+	StartLead(NewLeader)
+end
+
+--You Left group
+function GroupLeave(sName, sLine, wildcards)
+	EndLead()
+end
+
+function DisplayGroupStats (sName, sLine, wildcards)
+
+	ToChat = ""
+--[[
+	if #GroupStats < 1 then 
+		ToChat = "No stats recorded yet."
+		ColourNote("mediumspringgreen", "", ToChat)
+		return
+	end
+	]]--
+
+if wildcards.argument == "reset" or wildcards.argument == "new" then
+	GroupStats = {}
+	ColourNote("mediumspringgreen", "", "GroupStats reset.")
+	return
+end
+	
+if wildcards.argument == "cur" or wildcards.argument == "current" then
+	GainedXP = 0
+	LeadingTime = 0
+	XPRate = 0
+	WasLeader = "Unknown"
+	
+	--Figure out who was leading
+	if sLeader ~= nil and sLeader ~= "" then
+	  WasLeader = sLeader
+	elseif LeadingStats.leader ~= nil then
+		WasLeader = LeadingStats.leader
+	end
+	if LeadingStats.xp ~= nil and CharVitals.xp ~= nil then GainedXP = tonumber(CharVitals.xp) - tonumber(LeadingStats.xp) end
+	if LeadingStats.start ~= nil then LeadingTime = os.difftime (os.time (), LeadingStats.start)  end
+	
+	if LeadingTime > 0 then XPRate = (GainedXP / LeadingTime) * 3600 end
+	DisplayGainedXP = Kify(GainedXP)
+	DisplayLeadingTime = TimeFormat(LeadingTime)
+	DisplayXPRate = Kify(XPRate)
+
+	if LeadingTime ~= 0 then
+		ToChat = "Current Leader '"..WasLeader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)"
+	else 
+		ColourNote("greenyellow", "", "No stats recordeding currently.")
+		return
+	end
+	if wildcards.command == "gstats" then
+		ColourNote("greenyellow", "", ToChat)
+	elseif wildcards.command == "ggstats" then	
+		Send("group say " .. ToChat)
+	end
+	return
+end
+
+if wildcards.argument == "last"  then
+	if #GroupStats < 1 then 
+		ToChat = "No stats recorded yet."
+		ColourNote("mediumspringgreen", "", ToChat)
+		return
+	end
+		Leader      = GroupStats[#GroupStats][1]
+		GainedXP    = GroupStats[#GroupStats][2]
+		LeadingTime = GroupStats[#GroupStats][3]
+		DisplayGainedXP = Kify(GainedXP)
+		DisplayLeadingTime = TimeFormat(LeadingTime)
+		DisplayXPRate = Kify(XPRate)
+		XPRate = (GainedXP / LeadingTime) * 3600
+		
+		ToChat = "Leader '"..Leader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)"
+		
+		if wildcards.command == "gstats" then 
+			ColourNote("mediumspringgreen", "", ToChat)
+		elseif wildcards.command == "ggstats" then
+			Send("group say ".. ToChat)
+		end			
+	return
+end
+
+if wildcards.argument == "all"  then
+	if #GroupStats < 1 then 
+		ToChat = "No stats recorded yet."
+		ColourNote("mediumspringgreen", "", ToChat)
+		return
+	end
+	for i, v in ipairs (GroupStats) do
+		Leader      = v[1]
+		GainedXP    = v[2]
+		LeadingTime = v[3]
+		HowLongAgo =  v[4]
+		DisplayGainedXP = Kify(GainedXP)
+		DisplayLeadingTime = TimeFormat(LeadingTime)
+		XPRate = (GainedXP / LeadingTime) * 3600
+		DisplayXPRate = Kify(XPRate)
+		iDaysAgo = math.floor(HowLongAgo / (86400))
+		iNotedDays = 0 
+		Today = false
+		if wildcards.command == "gstats" then
+			if iDaysAgo ~= iNotedDays and iDaysAgo > 0 then
+				ColourNote("mediumspringgreen", "", DaysAgo .. " day(s) ago:")
+				iNotedDays = iDaysAgo
+			end				
+			ColourNote("mediumspringgreen", "", i .. ") Leader '"..Leader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)")
+		elseif sLine == "ggstats" then
+			if iDaysAgo ~= iNotedDays and iDaysAgo > 0 then
+				ToChat = ToChat .. DaysAgo .. " day(s) ago: \[Leader '"..Leader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)\]"
+				iNotedDays = iDaysAgo
+			else
+				if Today == false then
+					ToChat = ToChat .. "Today: "
+					Today = true
+				end
+			ToChat = ToChat .. "\[Leader '"..Leader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)\]"
+			end				
+		end			
+	end
+	GainedXP = 0
+	LeadingTime = 0
+	XPRate = 0
+	WasLeader = "Unknown"
+	
+	--Figure out who is leading
+	if sLeader ~= nil and sLeader ~= "" then
+	  WasLeader = sLeader
+	elseif LeadingStats.leader ~= nil then
+		WasLeader = LeadingStats.leader
+	end
+	if LeadingStats.xp ~= nil and CharVitals.xp ~= nil then GainedXP = tonumber(CharVitals.xp) - tonumber(LeadingStats.xp) end
+	if LeadingStats.start ~= nil then LeadingTime = os.difftime (os.time (), LeadingStats.start)  end
+	
+	if LeadingTime > 0 then XPRate = (GainedXP / LeadingTime) * 3600 end
+	DisplayGainedXP = Kify(GainedXP)
+	DisplayLeadingTime = TimeFormat(LeadingTime)
+	DisplayXPRate = Kify(XPRate)
+
+	if LeadingTime ~= 0 then
+		ToChat = ToChat .. "\[Current Leader '"..WasLeader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)\]"
+	end
+	if wildcards.command == "gstats" then
+		ColourNote("greenyellow", "", "Current Leader '"..WasLeader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)")
+	end
+
+	if wildcards.command == "ggstats" then
+		Send("group say ".. ToChat)
+	end
+end
+
+
+
+	for i, v in ipairs (GroupStats) do
+		Leader      = v[1]
+		GainedXP    = v[2]
+		LeadingTime = v[3]
+		HowLongAgo  = v[4]
+		IsCurrent 	= v[5]
+		DisplayGainedXP = Kify(GainedXP)
+		DisplayLeadingTime = TimeFormat(LeadingTime)
+		XPRate = (GainedXP / LeadingTime) * 3600
+		DisplayXPRate = Kify(XPRate)
+		if wildcards.command == "gstats" then
+			if IsCurrent == true then
+				ColourNote("mediumspringgreen", "", i .. ") Leader '"..Leader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)")
+			end
+		elseif sLine == "ggstats" then
+			if IsCurrent == true then
+				ToChat = ToChat .. "\[Leader '"..Leader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)\]"
+			end
+		end				
+	end
+	GainedXP = 0
+	LeadingTime = 0
+	XPRate = 0
+	WasLeader = "Unknown"
+	
+	--Figure out who is leading
+	if sLeader ~= nil and sLeader ~= "" then
+	  WasLeader = sLeader
+	elseif LeadingStats.leader ~= nil then
+		WasLeader = LeadingStats.leader
+	end
+	if LeadingStats.xp ~= nil and CharVitals.xp ~= nil then GainedXP = tonumber(CharVitals.xp) - tonumber(LeadingStats.xp) end
+	if LeadingStats.start ~= nil then LeadingTime = os.difftime (os.time (), LeadingStats.start)  end
+	
+	if LeadingTime > 0 then XPRate = (GainedXP / LeadingTime) * 3600 end
+	DisplayGainedXP = Kify(GainedXP)
+	DisplayLeadingTime = TimeFormat(LeadingTime)
+	DisplayXPRate = Kify(XPRate)
+
+	if LeadingTime ~= 0 then
+		ToChat = ToChat .. "\[Current Leader '"..WasLeader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)\]"
+	end
+	if wildcards.command == "gstats" then
+		ColourNote("greenyellow", "", "Current Leader '"..WasLeader.."': "..DisplayGainedXP .."Xp gained in " .. DisplayLeadingTime .. " \(" .. DisplayXPRate .. "Xp/hr\)")
+	end
+
+	if wildcards.command == "ggstats" then
+		Send("group say ".. ToChat)
+	end
+end
+
+function TimeFormat(nNum)
+    iSeconds = nNum
+	iDay = math.floor(iSeconds / (86400))
+    iHour = math.floor( (iSeconds - (iDay * 86400))/ 3600)
+	iMinute = math.floor( (iSeconds - (iDay * 86400) - (iHour * 3600)) / 60 )
+    iSecond = math.floor( iSeconds - (iDay * 86400) - (iHour * 3600) - (iMinute * 60) )
+	sString = ""
+	if iDay > 0 then sString = iDay .. "D" end
+	if sString ~= "" then sString = sString .. " " end
+	sString = sString .. string.format("%d\:%02d\:%02d\s", iHour, iMinute, iSecond)
+	return sString
+end
+
+function old_TimeFormat(nNum)
+    iSeconds = nNum
+	iDay = math.floor(iSeconds / (86400))
+    iHour = math.floor( (iSeconds - (iDay * 86400))/ 3600)
+	iMinute = math.floor( (iSeconds - (iDay * 86400) - (iHour * 3600)) / 60 )
+    iSecond = math.floor( iSeconds - (iDay * 86400) - (iHour * 3600) - (iMinute * 60) )
+	sString = ""
+	if iDay == 0 and iHour == 0 and iMinute == 0 and iSecond == 0 then sString = nNum .. "s" end
+	if iDay > 0 then sString = iDay .. "d" end
+	if iHour > 0 then 
+		if sString ~= "" then sString = sString .. " " end
+		sString = sString .. iHour .. "h" 
+	end
+	if iMinute > 0 then 
+		if sString ~= "" then sString = sString .. " " end
+		sString = sString .. iMinute .. "m"
+	end
+	if iSecond > 0 then
+		if sString ~= "" then sString = sString .. " " end
+		sString = sString .. iSecond .. "s"
+	end
+	return sString
+end
+
+--Shorten number to reflect m\k
+function Kify(nNum)
+if nNum == 0 or nNum == nil or nNum == "" then
+	return "Unknown"
+end
+
+	nMil = math.floor(nNum / 1000000)
+	nHunThou = math.floor( (nNum - (nMil * 1000000)) / 100000)
+	nTenThou = math.floor( (nNum - (nMil * 1000000) - (nHunThou * 100000)) / 10000)
+	nThou = math.floor( (nNum - (nMil * 1000000) - (nHunThou * 100000) - (nTenThou * 10000)) / 1000)
+	nHun = math.floor( (nNum - (nMil * 1000000) - (nHunThou * 100000) - (nTenThou * 10000) - (nThou * 1000)) / 100)
+	sString = math.floor(nNum)
+
+	if nMil > 0 then
+		if nMil >= 100 then
+			sString = nMil .. "m"
+		elseif nMil >= 10 then
+			if nHunThou > 0 then
+				sString = nMil .. "." .. nHunThou .. "m"
+			else
+				sString = nMil .. "m"
+			end
+		else
+			if nTenThou > 0 then
+				sString = nMil .. "." .. nHunThou .. nTenThou .. "m"
+			elseif nHunThou > 0 then
+				sString = nMil .. "." .. nHunThou .. "m"
+			else
+				sString = nMil .. "m"
+			end
+		end
+	elseif nHunThou > 0 then
+		sString = nHunThou .. nTenThou .. nThou .. "k"
+	elseif nTenThou > 0 then
+		if nHun > 0 then
+			sString = nTenThou .. nThou .. "." .. nHun .. "k"
+		else
+			sString = nTenThou .. nThou .. "k"
+		end
+	elseif nThou > 0 then
+		if nHun > 0 then
+			sString = nThou .. "." .. nHun .. "k"
+		else
+			sString = nThou .. "k"
+		end
+	end
+	return sString
+end
+
+
+--GMCP Stuff
+local IAC, SB, SE, DO = 0xFF, 0xFA, 0xF0, 0xFD
+local GMCP      = 201
+local GMCPDebug = tonumber(GetVariable("GMCPDebug")) or 0
+
+function gmcpdebug(name, line, wildcards)
+   newval = tonumber(wildcards[1])
+   if not newval or newval > 2 or newval < 0 then
+      ColourNote("darkorange", "", "GMCPDebug valid values are: 0 - off, 1 - simple, 2 - verbose")
+      return
+   end
+   GMCPDebug = newval
+   local msg = "off"
+   if GMCPDebug == 1 then
+      msg = "simple"
+   elseif GMCPDebug == 2 then
+      msg = "verbose"
+   end
+   ColourNote ("darkorange", "", "GMCPDebug: " .. msg)
+end
+ 
+function gmcpdebug(name, line, wildcards)
+   newval = tonumber(wildcards[1])
+   if not newval or newval > 2 or newval < 0 then
+      ColourNote("darkorange", "", "GMCPDebug valid values are: 0 - off, 1 - simple, 2 - verbose")
+      return
+   end
+   GMCPDebug = newval
+   local msg = "off"
+   if GMCPDebug == 1 then
+      msg = "simple"
+   elseif GMCPDebug == 2 then
+      msg = "verbose"
+   end
+   ColourNote ("darkorange", "", "GMCPDebug: " .. msg)
+end
+---------------------------------------------------------------------------------------------------
+-- Mushclient callback function when telnet SB data received.
+---------------------------------------------------------------------------------------------------
+function OnPluginTelnetSubnegotiation (msg_type, data)
+
+   if msg_type ~= GMCP then
+      return
+   end -- if not GMCP
+  
+   -- debugging
+	if GMCPDebug > 0 then 
+     ColourNote ("darkorange", "", data) 
+   end
+
+   message, params = string.match (data, "([%a.]+)%s+(.*)")
+  
+   -- if valid format, broadcast to all interested plugins
+   if message then
+	  GetGMCPData(data)
+   end -- if
+   
+end -- function OnPluginTelnetSubnegotiation
+
+-- Actually send a GMCP packet to the MUD (has to be packaged up specially)
+function Send_GMCP_Packet (sPacketData)
+  assert (sPacketData, "Send_GMCP_Packet passed a nil message.")
+  SendPkt (string.char (IAC, SB, GMCP) .. (string.gsub (sPacketData, "\255", "\255\255")) .. string.char (IAC, SE))
+end -- Send_GMCP_Packet
+
+function OnPluginTelnetRequest (msg_type, data)
+   if msg_type == GMCP and data == "WILL" then
+      return true
+   end -- if
+  
+   if msg_type == GMCP and data == "SENT_DO" then
+      Note ("Enabling GMCP.") 
+      -- This hard-coded block may need to be made into a config table as we add more message types.
+      Send_GMCP_Packet (string.format ('Core.Hello { "client": "MUSHclient", "version": "%s" }', Version()))
+--      Send_GMCP_Packet ('Core.Supports.Set [ "Char 1", "Comm 1", "Room 1" ]')
+      local sSupports = '"room.info"'
+      sSupports = sSupports .. ', "room.map"'
+      sSupports = sSupports .. ', "room.writtenmap"'
+      sSupports = sSupports .. ', "Char.Vitals"'
+      Send_GMCP_Packet ('Core.Supports.Set [ ' .. sSupports .. ' ]')
+      return true
+   end -- if GMCP login needed (just sent DO)
+
+   return false
+end -- function OnPluginTelnetRequest
+
+require "tprint"
+require "json"
+---End GMCP stuff
+
+CharVitals = {}
+function gotCharacterVitals (info)
+--  ColourNote("red", "", "GMCP!")
+	CharVitals = info
+	if LeadingStats["xp"] == nil and CharVitals.xp ~= nil then
+		LeadingStats["xp"] = CharVitals.xp
+		if LeadingStats["leader"] ~= nil then
+			StartLead(LeadingStats["leader"])
+		else
+			StartLead()
+		end
+	end
+		
+end  -- gotRoomInfo
+
+handlers = {
+  ["char.vitals"]           = gotCharacterVitals,
+  } -- end of handlers
+
+function GetGMCPData(text)
+   -- pull out GMCP message, plus the data belonging to it
+   message, params = string.match (text, "([%a.]+)%s+(.*)")
+  
+   -- no match? oops!
+   if not message then
+      return
+   end -- if
+           
+   -- ensure we have an array or object
+   if not string.match (params, "^[%[{]") then
+      params =  "[" .. params .. "]"  -- JSON hack, make msg first element of an array.
+   end -- if 
+   
+   -- decode it
+   result = assert (json.decode (params))
+   
+   -- debugging
+--   ColourNote ("yellow", "", "GMCP: " .. message)
+   
+   -- find a handler for this message type
+   local handler = handlers [message:lower ()]
+   
+   -- warn if not found
+   if not handler then
+--     ColourNote ("red", "", "Warning: No handler for: " .. message)
+     return
+   end -- no handler
+   
+   -- call the handler, pass in whatever we got
+   handler (result)
+
+end
+
+]]>
+</script> 
+<!--  Triggers  -->
+<plugin
+   name="GroupStats"
+   author="Reva"
+   id="aedeede231149ea429c562c4"
+   language="Lua"
+   purpose="Record Group Stats"
+   date_written="2018-02-07"
+   date_modified="2018-02-11"
+   save_state="y"
+   requires="4.84"
+   version="0.5"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^(?P<command>gstats)(?: (?P<argument>\w+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="DisplayGroupStats"
+   name="ListGroupStats"
+  > 
+  </alias>
+  <alias
+   match="^gleader (\w+)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   name="ManualLeaderChange"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	ManualLeaderChange("%1")
+  </send>
+  </alias>
+  <alias
+   match="^gchange (\w+)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   name="LeaderFix"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	LeaderFix("%1")
+  </send>
+  </alias>
+  <alias
+   match="test *"
+   enabled="n"
+   ignore_case="y"
+   sequence="30"
+   send_to="12"   
+  >
+  <send>
+	Note(TimeFormat("%1"))
+  </send>
+  </alias>
+  <alias
+   match="ghelp"
+   enabled="y"
+   ignore_case="y"
+   sequence="30"
+   send_to="12"   
+  >
+  <send>
+	DisplaygHelp()
+  </send>
+  </alias>
+  <alias
+   match="^(?P<command>ggstats)(?: (?P<argument>\w+))?$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="DisplayGroupStats"
+   name="GroupListGroupStats"
+  > 
+  </alias>
+<alias
+   script="gmcpdebug"
+   match="^gmcpdebug (.*)?$"
+   enabled="y"
+   regexp="y"
+   sequence="100"
+   ignore_case="y"
+></alias>
+
+</aliases>
+
+<triggers> 
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] By the power vested in (?<oldleader>\w+), (?<newleader>\w+) has been appointed as the new leader of the group\.$"
+   regexp="y"
+   sequence="12"
+   script="LeaderChange"
+   name="GroupLeadChange"
+   group="group"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Noting the intentions of .*, you move in to assist (?P<groupleader>\w+).*\.$"
+   regexp="y"
+   sequence="12"
+   script="AssistLeaderDetect"
+   name="GroupAssistLeaderDetect"
+   group="group"
+  >
+  </trigger>
+  
+  
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] The current leader has left the group\.  A new leader will be chosen randomly\.$"
+   regexp="y"
+   sequence="12"
+   script="GroupLeaderLeft"
+   name="GroupLeaderLeft"
+   group="group"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] (?P<groupleader>\w+) (?:is|are) now the leader of the group\.$"
+   regexp="y"
+   sequence="12"
+   script="GroupRandomLeader"
+   name="GroupRandomLeader"
+   group="group"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^You have been invited by (?P<groupleader>\w+) .* to join (?:her|its|his) group called '(?P<groupname>.+)'\.  You have 120 seconds to join the group before the invitation is withdrawn\.  Use &quot;group join (?:\w+)&quot; to join\.$"
+   regexp="y"
+   sequence="12"
+   script="GroupInvite"
+   name="GroupInvite"
+   group="group"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] You have joined the group\.$"
+   regexp="y"
+   sequence="12"
+   script="GroupJoin"
+   name="JoinGroup"
+   group="group"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\[(?P<groupname>.+)\] You have left the group\.$"
+   regexp="y"
+   sequence="12"
+   script="GroupLeave"
+   name="LeaveGroup"
+   group="group"
+  >
+  </trigger>
+  
+  </triggers>
+
+<timers>
+</timers>
+</muclient>

@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- Title for Explanation, by Author -->
+<!-- Other info -->
+
+<muclient>
+<plugin
+   name="GroupSayHexColourFade"
+   author="Reva"
+   id="aedeb676bte36ea4bbe56434"
+   language="Lua"
+   purpose="Group Say As HEX Colour Fade"
+   date_written="2020-06-03"
+   save_state="y"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^fgs (.+)"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+		FadeResults = CreateMultiColourFade("%1")
+		if FadeResults then
+			SendNoEcho("group say " ..CreateSay(FadeResults))
+		end
+  </send>
+  </alias> 
+  <alias
+   match="^bfgs (.+)"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+		FadeResults = CreateMultiColourFade("%1")
+		if FadeResults then
+			SendNoEcho("group say " ..CreateBSay(FadeResults))
+		end
+  </send>
+  </alias> 
+</aliases>
+<script>
+<![CDATA[
+
+--tColours = {"red", "salmon", "magenta"}
+--tColours = {"red", "salmon", "silver"}
+--tColours = {"cyan", "blue", "white", "grey"}
+--change or add colours in this list to use in fade.
+tColours = {"red", "yellow", "blue"}
+
+
+function ColourNameToRGBHex(color_name)
+   color = ColourNameToRGB(color_name)
+   low = math.floor(color/65536)
+   color = color - low * 65536
+   mid = math.floor(color/256) * 256
+   color = color - mid
+   high = color * 65536
+   return string.upper(string.format("#%06x", high + mid + low))
+end
+
+function fade_RGB(colour1, colour2, percentage)
+	r1, g1, b1 = string.match(colour1, "#([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])")
+	r2, g2, b2 = string.match(colour2, "#([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])")
+	
+	r3 = tonumber(r1, 16)*(100-percentage)/100.0 + tonumber(r2, 16)*(percentage)/100.0
+    g3 = tonumber(g1, 16)*(100-percentage)/100.0 + tonumber(g2, 16)*(percentage)/100.0
+    b3 = tonumber(b1, 16)*(100-percentage)/100.0 + tonumber(b2, 16)*(percentage)/100.0
+	local Result = "#"..Dec2Hex(r3).. Dec2Hex(g3)..Dec2Hex(b3)
+	return "#"..Dec2Hex(r3).. Dec2Hex(g3)..Dec2Hex(b3)
+end
+
+--------------------------------------------------------------------------------
+--   MATH FUNCTIONS
+--------------------------------------------------------------------------------
+function Dec2Hex(nValue)
+	if type(nValue) == "string" then
+		nValue = String.ToNumber(nValue);
+	end
+	nHexVal = string.format("%X", nValue);  -- %X returns uppercase hex, %x gives lowercase letters
+	sHexVal = nHexVal.."";
+	if nValue < 16 then
+		return "0"..tostring(sHexVal)
+	else
+		return sHexVal
+	end
+end
+
+--Two colour fade, unused
+function CreateColourFade(arg, colour1, colour2)
+	--Error checking that all arguments are the way we want them, possibly remove in future if there is no ability to do this manually
+	if arg == nil or arg == "" then
+		Note("Error, no input string.")
+		return
+	end
+	if colour1 == nil or ColourNameToRGB(colour1) == -1 then
+		Note("Error, invalid colour1 entry.")
+		return
+	end
+	if colour2 == nil or ColourNameToRGB(colour2) == -1 then
+		Note("Error, invalid colour2 entry.")
+		return
+	end
+	
+	local colour1 = ColourNameToRGBHex(colour1)
+	local colour2 = ColourNameToRGBHex(colour2)
+	local iReps = string.len(arg) -1
+	local Results = {}
+	local iTimes = 0
+	for sLetter in string.gmatch(arg, ".") do
+		if iTimes == 0 then
+			iPercentToChange = 0
+			table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+		else
+			iPercentToChange = (100/iReps)*iTimes
+			table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+		end
+		iTimes = iTimes + 1
+	end
+	return Results
+end
+	
+function CreateMultiColourFade(arg)
+	--Error checking that all arguments are the way we want them, possibly remove in future if there is no ability to do this manually
+	if arg == nil or arg == "" then
+		Note("Error, no input string.")
+		return
+	end
+
+	if #tColours > string.len(arg) then
+		Note("Error, you must have more characters in the string that colours (" .. #tColours .. ").")
+		return
+	end
+	--Number of reps we will need
+	iNumberOfFades = #tColours - 1
+	--Lenght of the string to fade each time
+	iLength = math.floor(string.len(arg) / iNumberOfFades)
+
+	--Lets check if it divided evenly as we will need to make up for it at the end
+	local iRemainder = 0
+	if iLength * iNumberOfFades ~= string.len(arg) then
+		iRemainder = string.len(arg) - (iLength * iNumberOfFades)
+	end
+
+	local Results = {}
+	local iRemaindersUsed = 0
+	for i, v in ipairs (tColours) do
+		local colour1 = ColourNameToRGBHex(tColours[i])
+
+		if tColours[i+1] ~= nil then
+			local colour2 = ColourNameToRGBHex(tColours[i+1])
+			
+			local sString = string.sub(arg, 1 + iRemaindersUsed + ((i - 1) * iLength), i * iLength + iRemaindersUsed)
+			if iRemainder >= 1 then
+				sString = string.sub(arg, 1 + ((i - 1) * iLength) + iRemaindersUsed, (i * iLength) + 1 + iRemaindersUsed)
+				iRemainder = iRemainder - 1
+				iRemaindersUsed = iRemaindersUsed + 1
+			end
+			local iReps = string.len(sString) -1
+			local iTimes = 0
+			
+			for sLetter in string.gmatch(sString, ".") do
+
+				if iTimes == 0 then
+					iPercentToChange = 0
+					table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+				else
+					iPercentToChange = (100/iReps)*iTimes
+					table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+				end
+				iTimes = iTimes + 1
+			end
+		end
+	end
+	return Results
+end
+
+function CreateSay(Results)
+	local sThisSay = ""
+
+	for i, v in ipairs(Results) do
+		sThisSay = sThisSay .. "%%^^" .. v[2] .. "%%^^".. v[1]
+	end
+
+	--Copy to clipboard as well
+	return sThisSay .. "%%^^RESET%%^^"
+end
+
+function CreateBSay(Results)
+	local sThisSay = ""
+
+	for i, v in ipairs(Results) do
+		sThisSay = "%%^^BLACK%%^^" .. sThisSay .. "%%^^B_" .. v[2] .. "%%^^".. v[1]
+	end
+
+	--Copy to clipboard as well
+	return sThisSay
+end
+
+]]>
+</script> 
+<!--  Triggers  -->
+<triggers> 
+</triggers>
+  
+</muclient>

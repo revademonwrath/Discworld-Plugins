@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="iso-8859-1"?>
 <!DOCTYPE muclient>
 
-<!-- DamageList by Reva -->
+<!-- DamageLogger by Reva -->
 <!-- Grab damage output to a table and USE that data! -->
 
 <muclient>
@@ -11,7 +11,6 @@
 require "json"
 sTextColour = "limegreen"
 
---Set to true to save over installs, will create a long list
 bSort = true
 if GetVariable("bSort") == "false" then
 	bSort = false
@@ -265,7 +264,7 @@ end
 function OnPluginInstall()
 	sFirstTime = GetVariable("sFirstTime")
 	if sFirstTime ~= "version_" .. tostring(GetPluginInfo(GetPluginID(), 19)) then	
-		DoAfterSpecial (0.5, 'DamageListHelp()', sendto.script)
+		DoAfterSpecial (0.5, 'DamageLoggerHelp()', sendto.script)
 	else
 	if bIsRecording == false then
 		DoAfterSpecial (0.5, 'DLNote("Recording is currently off, \'dl record on\' to turn it on.")', 12)
@@ -277,7 +276,7 @@ function OnPluginInstall()
 	end
 end
 
-function DamageListHelp()
+function DamageLoggerHelp()
 	ColourNote(sTextColour, "", "DamageLogger v"..GetPluginInfo (GetPluginID (), 19)..", by Reva")
 	ColourNote(sTextColour, "", "--------------"..string.rep("-", string.len(tostring(GetPluginInfo (GetPluginID (), 19)))).."---------")
 	if bIsRecording == false then
@@ -324,10 +323,10 @@ end
 	 regexp="y"
      ignore_case="y"
      sequence="30"
-     script="DamageListHelp"
+     script="DamageLoggerHelp"
     ></alias>
     <alias
-     match="^(?:damage ?log(?:ger)?|dl) (list|result)s?$"
+     match="^(?:damage ?log(?:ger)?|dl) (list|stats)$"
      enabled="y"
 	 regexp="y"
      ignore_case="y"

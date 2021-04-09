@@ -1,0 +1,983 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- Title for Explanation, by Author -->
+<!-- Other info -->
+
+<muclient>
+<plugin
+   name="SelfTeachingCostAndBonusComputer"
+   author="Reva"
+   id="aede233244bcedf429c562c4"
+   language="Lua"
+   purpose="Calculate Self-teaching Costs and Computer Bonuses"
+   date_written="2018-04-20"
+   save_state="y"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^cost (?:from )?(\d+)(?: (?:to )?(\d+))?"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	local iStart = "%1"
+	if "%2" == nil or "%2" == "" then
+		iEnd = iStart + 1
+	else
+		iEnd = "%2"
+	end
+	ExpCostPerLevel(tonumber(iStart), tonumber(iEnd))
+  </send>
+  </alias>
+
+  <alias
+   match="^(?:compute)? ?bonus (.+?) (\d+)$"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	DisplayBonus("%1", "%2")
+  </send>
+  </alias>
+  <alias
+   match="^findskill (.+)$"
+   enabled="n"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	FindSkill("%1")
+  </send>
+  </alias>
+
+  <alias
+   match="^detect ?stats$"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	StartDetectStats()
+  </send>
+  </alias>
+
+  <alias
+   match="^reset ?stats$"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	Stats = DefaultStats
+	bDetectedStats = false
+	Note("Stats reset.")
+  </send>
+  </alias>
+
+  <alias
+   match="^tc ?help$"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	Welcome()
+  </send>
+  </alias>
+
+  <alias
+   match="^abb(reviate) ?skill"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	if bAbbSkillName == true then
+		bAbbSkillName = false
+		Note("Skill names will no longer be abbreviated.")
+	else
+		bAbbSkillName = true
+		Note("Abbreviating skill names.")
+	end
+  </send>
+  </alias>
+
+</aliases>
+<script>
+<![CDATA[
+
+require "json"
+
+function OnPluginInstall()
+	DoAfterSpecial (1.5, 'Welcome()', sendto.script)
+end
+
+function Welcome()
+ColourNote("violet", "",[[
+Self-Teaching Cost And Bonus Computer v1 by Reva
+>< >< >< >< >< >< >< >< >< >< >< >< >< >< >< ><
+Here are a list of commands:
+'tc help' - this help screen
+
+Teaching Cost:
+'cost <level>' - compute self-teaching cost for a single level
+'cost <level> to <level2>' - compute self-teaching cost from level to level2
+
+Bonus Computer:
+'[compute ]bonus <skill> <level>' - computer bonus for skill at given level, note skill can use abbreviations
+'detect stats' - detect your stats to use for computing
+'reset stats' - reset stats to default (13s)
+'abb[reviate] skill' - use abbreviated names when displaying the skill
+]])
+
+end
+
+
+function OnPluginSaveState ()
+
+	SetVariable("bAbbSkillName", tostring(bAbbSkillName))
+	SetVariable("bDetectedStats", tostring(bDetectedStats))
+	SetVariable("Stats", json.encode(Stats))
+ 
+end -- function OnPluginSaveState
+
+--Default to non-rearranged
+DefaultStats = {
+["constitution"] = {["base"] = 13,},
+["dexterity"] = {["base"] =  13,},
+["intelligence"] = {["base"] = 13,},
+["strength"] = {["base"] = 13,},
+["wisdom"] = {["base"] = 13,},
+["height"] = {["base"] = 177,},
+["weight"] = {["base"] = 80,},
+}
+
+bDetectedStats = false
+if GetVariable("bDetectedStats") == "true" then
+	bDetectedStats = true
+end
+
+bAbbSkillName = false
+if GetVariable("bDetectedStats") == "true" then
+	bDetectedStats = true
+end
+
+if (GetVariable("Stats") ~= nil) and bDetectedStats == true then
+	Stats = json.decode(GetVariable("Stats"))
+else
+	Stats = DefaultStats
+end
+
+AbbStats = {
+["C"] = "constitution",
+["D"] = "dexterity",
+["I"] = "intelligence",
+["S"] = "strength",
+["W"] = "wisdom",
+}
+
+--XP Cost for 1 level from current level
+function ExpCost(iCurLevel, iBonus, iTeach)
+	local bSelfTeach = false
+	
+	--Check if no Bonus or Teaching bonus entered, if so assume self-teaching
+	if iTeach == nil or iTeach == "" then 
+		--Note("No teaching bonus entered, assuming self-teach.")
+		iTeach = 1 
+		iBonus = 1
+		bSelfTeach = true
+	elseif iBonus == nil or iBonus == "" then 
+		--Note("No current bonus entered, assuming self-teach.")
+		iTeach = 1 
+		iBonus = 1 
+		bSelfTeach = true
+	end
+	
+	if bSelfTeach == false then
+		--Calculation with teaching bonus factored in
+		iXpCost = 500 + math.floor( (250+125*iBonus/iTeach) * iCurLevel * math.exp(iCurLevel/500) )
+	else
+		iXpCost = 500 + math.floor( (375) * iCurLevel * math.exp(iCurLevel/500) )
+	end
+	return iXpCost
+end
+
+function ExpCostPerLevel(iStartLevel, iEndLevel)
+	if iEndLevel == nil or iEndLevel == "" then iEndLevel = iStartLevel end
+
+	--Check if we are regressing
+	if iEndLevel < iStartLevel then
+		Note("It will not cost much XP for negative advancement.")
+		return
+	end
+	
+	iTotalExp = 0
+	--Loop through the levels calculating cost of each one individually
+	for j = iStartLevel, iEndLevel - 1, 1 do 
+		local iNextLevelXPCost = ExpCost(j)
+		iTotalExp = iTotalExp + iNextLevelXPCost
+		--Note("Cur Level = " .. j .. "|XP For Next Level = " .. iNextLevelXPCost)
+	end
+	Note("Total XP for level " .. iStartLevel .. " to " .. iEndLevel .. ": " .. AddCommas(iTotalExp) .. " xp.")
+end
+
+function RawLevelBonusCalc(iLevel)
+--[[
+From site:
+for levels from  0 to 20:  R(level) =            5   *  level
+for levels from 21 to 40:  R(level) = RoundDown (2.5 * (level-20) + 100)
+for levels from 41 to 60:  R(level) =            1   * (level-40) + 150
+for levels from 61      :  R(level) = RoundDown (0.5 * (level-60) + 170)
+Maybe simpler method:
+]]--
+	if iLevel <= 20 then
+		iRawBonus = iLevel * 5
+	elseif iLevel <= 40 then
+		iRawBonus = math.floor(2.5 * (iLevel-20) + 100)
+	elseif iLevel <= 40 then
+		iRawBonus = 1 * (iLevel-40) + 150
+	else
+		iRawBonus = math.floor(0.5 * (iLevel-60) + 170)
+	end
+	return iRawBonus
+end
+
+--values are 5 stats uses in the skill
+function StatMultiplicator(a,b,c,d,e)
+	return ( 1/9.8 ) * math.log( a*b*c*d*e ) - 0.25
+end
+
+
+function CalcBonus(iLevel, sStats)
+	local a = Stats[AbbStats[string.sub(sStats, 1, 1)]]["base"]
+	local b = Stats[AbbStats[string.sub(sStats, 2, 2)]]["base"]
+	local c = Stats[AbbStats[string.sub(sStats, 3, 3)]]["base"]
+	local d = Stats[AbbStats[string.sub(sStats, 4, 4)]]["base"]
+	local e = Stats[AbbStats[string.sub(sStats, 5, 5)]]["base"]
+
+	local iThisStatMultiplicator = StatMultiplicator(a,b,c,d,e)
+	local iThisRawLevelBonus = RawLevelBonusCalc(tonumber(iLevel))
+	local iThisBonus = math.floor(iThisStatMultiplicator * iThisRawLevelBonus)
+
+	return iThisBonus
+end
+
+function CalcModBonus(iLevel, sStats)
+	local a = Stats[AbbStats[string.sub(sStats, 1, 1)]]["base"]
+		if Stats[AbbStats[string.sub(sStats, 1, 1)]]["mod"] ~= nil then
+			a = a - Stats[AbbStats[string.sub(sStats, 1, 1)]]["mod"]
+		end
+	local b = Stats[AbbStats[string.sub(sStats, 2, 2)]]["base"]
+		if Stats[AbbStats[string.sub(sStats, 2, 2)]]["mod"] ~= nil then
+			b = b - Stats[AbbStats[string.sub(sStats, 2, 2)]]["mod"]
+		end
+	local c = Stats[AbbStats[string.sub(sStats, 3, 3)]]["base"]
+		if Stats[AbbStats[string.sub(sStats, 3, 3)]]["mod"] ~= nil then
+			c = c - Stats[AbbStats[string.sub(sStats, 3, 3)]]["mod"]
+		end
+	local d = Stats[AbbStats[string.sub(sStats, 4, 4)]]["base"]
+		if Stats[AbbStats[string.sub(sStats, 4, 4)]]["mod"] ~= nil then
+			d = d - Stats[AbbStats[string.sub(sStats, 4, 4)]]["mod"]
+		end
+	local e = Stats[AbbStats[string.sub(sStats, 5, 5)]]["base"]
+		if Stats[AbbStats[string.sub(sStats, 5, 5)]]["mod"] ~= nil then
+			e = e - Stats[AbbStats[string.sub(sStats, 5, 5)]]["mod"]
+		end
+
+	local iThisStatMultiplicator = StatMultiplicator(a,b,c,d,e)
+	local iThisRawLevelBonus = RawLevelBonusCalc(tonumber(iLevel))
+	local iThisBonus = math.floor(iThisStatMultiplicator * iThisRawLevelBonus)
+
+	return iThisBonus
+end
+
+function DisplayBonus(sSkill, iLevel)
+	List = FindSkill(sSkill)
+	if List == "Unknown" then
+		Note("Invalid skill format '" .. sSkill .. "'.")
+		return
+	elseif List == "None" then
+		Note("No match found for '" .. sSkill .. "'.")
+		return
+	end
+	
+	if bDetectedStats == false then
+		Note("Stats are set to straight 13s by default, to use your stats type 'detect stats'.")
+	end
+	
+	for i, v in ipairs (List) do
+		local sSkillName = Skills[v][1]
+			if bAbbSkillName == true then
+				sSkillName = string.sub(Skills[v][1], 1, 2)
+			end
+		if Skills[v][2] ~= "" then
+			if bAbbSkillName == true then
+				sSkillName = sSkillName .. "." .. string.sub(Skills[v][2], 1, 2)
+			else
+				sSkillName = sSkillName .. "." .. Skills[v][2]
+			end
+		end
+		if Skills[v][3] ~= "" then
+			if bAbbSkillName == true then
+				sSkillName = sSkillName .. "." .. string.sub(Skills[v][3], 1, 2)
+			else
+				sSkillName = sSkillName .. "." .. Skills[v][3]
+			end
+		end
+		if Skills[v][4] ~= "" then
+			if bAbbSkillName == true then
+				sSkillName = sSkillName .. "." .. string.sub(Skills[v][4], 1, 2)
+			else
+				sSkillName = sSkillName .. "." .. Skills[v][4]
+			end
+		end
+		Note("Skill: " .. sSkillName .. "|Lvl: " .. iLevel .. "|Bonus: " .. CalcBonus(iLevel, Skills[v][stats]))
+		if bMods == true then
+			Note("[Mods]Skill: " .. sSkillName .. "|Lvl: " .. iLevel .. "|Bonus: " .. CalcModBonus(iLevel, Skills[v][stats]))
+		end
+	end
+end
+
+
+--Maybe put a timer to disable as well after 5 seconds
+function StartDetectStats()
+	EnableTrigger("StatDetector", true)
+	Note("Detecting stats...")
+	SendNoEcho("score stats")
+	iStatNumber = 0
+end
+
+--require "tprint"
+function StatDetector (sName, sLine, wildcards)
+
+	if iStatNumber == 0 then bMods = false end
+	for sStat, iBase, iMod in string.gmatch (sLine, "(%w+) %.+ (%d+%.?[0-9]?) ?%(?(-?[0-9]?)%)?") do
+		--Note("Stat = " .. sStat .. "|Base = " .. iBase .. "|Mod = " .. tostring(iMod))
+		if iMod ~= nil and iMod ~= "" then
+			bMods = true
+			Stats[string.lower(sStat)]["base"] = tonumber(iBase) - tonumber(iMod)
+			Stats[string.lower(sStat)]["mod"] = tonumber(iMod)
+		else
+			Stats[string.lower(sStat)]["base"] = tonumber(iBase)
+			Stats[string.lower(sStat)]["mod"] = nil
+		end
+		iStatNumber = iStatNumber + 1
+	end
+	
+	if iStatNumber == 7 then
+		bDetectedStats = true
+		EnableTrigger("StatDetector", false)
+		Note("Stats recorded, to reset 'reset stats'.")
+		--tprint (Stats)
+	end
+	
+end
+
+function FindSkill(arg)
+	
+	word = {}
+	local iNum = 1
+	local arg1, arg2, arg3, arg4 = "", "", "", ""
+	for k in string.gmatch(string.lower(arg),'%w+') do 
+		if iNum == 1 then
+			arg1 = k
+		elseif iNum == 2 then
+			arg2 = k
+		elseif iNum == 3 then
+			arg3 = k
+		elseif iNum == 4 then
+			arg4 = k
+		else
+			return "Unknown"
+		end
+		iNum = iNum + 1
+	end
+
+	if arg1 == "" then
+		return "Unknown"
+	end
+	
+	Matches = {}
+	for i, v in ipairs (Skills) do
+		--if 
+		if string.match(v[1], "^"..arg1) and string.match(v[2], "^"..arg2) and string.match(v[3], "^"..arg3) and string.match(v[4], "^"..arg4) then
+			table.insert(Matches, i)
+			--Note("Match found: #" .. i .. "|Stats = " .. v[stats])
+		end
+	end
+	if #Matches == 0 then
+		return "None"
+	else
+		return Matches
+	end
+end
+
+stats = 6
+--cat = 1; 		skill_one = 2; 	skill_two = 3; 		skill_three = 4;brief = 5;						stats = 6
+Skills = {
+{"adventuring",	"", 			"",		 			"", 			"adventuring",					"", },
+{"adventuring",	"movement",		"",					"", 			"ad.movement",					"",	},
+{"adventuring",	"movement",		"swimming", 		"", 			"ad.mo.swimming",				"CCDDS",	},
+{"adventuring",	"movement",		"riding", 			"", 			"ad.mo.riding",					"	",	},
+{"adventuring",	"movement",		"riding",			"horse", 		"ad.mo.ri.horse",				"CCDDS",	},
+{"adventuring",	"movement",		"riding",			"camel",		"ad.mo.ri.camel",				"CCDDS",	},
+{"adventuring",	"movement",		"climbing", 		"", 			"ad.mo.climbing",				"",	},
+{"adventuring",	"movement",		"climbing",			"tree", 		"ad.mo.cl.tree",				"CCDDS",	},
+{"adventuring",	"movement",		"climbing",			"rock", 		"ad.mo.cl.rock",				"CCDDS",	},
+{"adventuring",	"movement",		"climbing",			"rope",			"ad.mo.cl.rope",				"CCDDS",	},
+{"adventuring",	"movement",		"sailing",			"", 			"ad.mo.sailing",				"CCDDS",	},
+{"adventuring",	"movement",		"following",		"", 			"ad.mo.following",				"",	},
+{"adventuring",	"movement",		"following",		"pursuit",		"ad.mo.fo.pursuit",				"CCDDS",	},
+{"adventuring",	"movement",		"following",		"evade",		"ad.mo.fo.evade",				"CCDDS",	},
+{"adventuring",	"acrobatics",	"", 				"", 			"ad.acrobatics",				"",	},
+{"adventuring",	"acrobatics",	"tumbling",			"", 			"ad.ac.tumbling",				"CDDSS",	},
+{"adventuring",	"acrobatics",	"vaulting",			"", 			"ad.ac.vaulting",				"CDDSS",	},
+{"adventuring",	"acrobatics",	"balancing",		"", 			"ad.ac.balancing",				"CDDSS",	},
+{"adventuring",	"evaluating",	"", 				"", 			"ad.evaluating",				"",	},
+{"adventuring",	"evaluating",	"weapons",			"", 			"ad.ev.weapons",				"IIIIW",	},
+{"adventuring",	"evaluating",	"armour",			"", 			"ad.ev.armour",					"IIIIW",	},
+{"adventuring",	"perception",	"", 				"",	 			"ad.perception",				"IIWWW",	},
+{"adventuring",	"direction",	"", 				"", 			"ad.direction",					"DDIIW",	},
+{"adventuring",	"health",		"", 				"", 			"ad.health",					"CCCCS",	},
+{"adventuring",	"points",		"", 				"", 			"ad.points",					"CDISW",	},
+{"covert",		"",				"", 				"", 			"covert", 						"DDDII",	},
+{"covert",		"stealth",		"", 				"", 			"co.stealth",					"DDDIS",	},
+{"covert",		"stealth",		"inside",			"", 			"co.st.inside",					"DDDIS",	},
+{"covert",		"stealth",		"outside",			"", 			"co.st.outside",				"DDDIS",	},
+{"covert",		"stealth",		"underwater",		"", 			"co.st.underwater",				"DDDIS",	},
+{"covert",		"hiding",		"", 				"", 			"co.hiding",					"DDIIS",	},
+{"covert",		"hiding",		"person",			"", 			"co.hi.person",					"DDIIS",	},
+{"covert",		"hiding",		"object",			"", 			"co.hi.object",					"DDIIS",	},
+{"covert",		"lockpick",		"", 				"", 			"co.lockpick",					"DDDDI",	},
+{"covert",		"lockpick",		"doors",			"", 			"co.lo.doors",					"DDDDI",	},
+{"covert",		"lockpick",		"safes",			"", 			"co.lo.safes",					"DDDDI",	},
+{"covert",		"lockpick",		"traps",			"", 			"co.lo.traps",					"DDDDI",	},
+{"covert",		"manipulation",	"", 				"", 			"co.manipulation",				"DDISS",	},
+{"covert",		"manipulation",	"palming",			"", 			"co.ma.palming",				"DDISS",	},
+{"covert",		"manipulation",	"passing",			"", 			"co.ma.passing",				"DDISS",	},
+{"covert",		"manipulation",	"sleightofhand",	"", 			"co.ma.sleightofhand",			"DDISS",	},
+{"covert",		"manipulation",	"stealing",			"", 			"co.ma.stealing",				"DDISS",	},
+{"covert",		"casing",		"", 				"", 			"co.casing",					"DIIWW",	},
+{"covert",		"casing",		"person",			"", 			"co.ca.person",					"DIIWW",	},
+{"covert",		"casing",		"place",			"", 			"co.ca.place",					"DIIWW",	},
+{"covert",		"items",		"", 				"", 			"co.items",						"DIIII",	},
+{"covert",		"items",		"poisons",			"", 			"co.it.poisons",				"DIIII",	},
+{"covert",		"items",		"traps",			"", 			"co.it.traps",					"DIIII",	},
+{"covert",		"items",		"weapons",			"", 			"co.it.weapons",				"DIIII",	},
+{"covert",		"points",		"", 				"", 			"co.points",					"CDDII",	},
+{"crafts",		"",				"", 				"", 			"crafts",						"DDIIW",	},
+{"crafts",		"smithing",		"", 				"", 			"cr.smithing",					"DDIIS",	},
+{"crafts",		"smithing",		"gold",				"", 			"cr.sm.gold",					"DDIIS",	},
+{"crafts",		"smithing",		"silver",			"", 			"cr.sm.silver",					"DDIIS",	},
+{"crafts",		"smithing",		"black",			"", 			"cr.sm.black",					"DDIIS",	},
+{"crafts",		"smithing",		"black",			"tools",		"cr.sm.bl.tools",				"DDIIS",	},
+{"crafts",		"smithing",		"black",			"weapons",		"cr.sm.bl.weapons",				"DDIIS",	},
+{"crafts",		"smithing",		"black",			"armour",		"cr.sm.bl.armour",				"DDIIS",	},
+{"crafts",		"smithing",		"gem",				"", 			"cr.sm.gem",					"DDIIS",	},
+{"crafts",		"smithing",		"locks",			"", 			"cr.sm.locks",					"DDIIS",	},
+{"crafts",		"mining",		"", 				"", 			"cr.mining",					"DDIIS",	},
+{"crafts",		"mining",		"gem",				"", 			"cr.mi.gem",					"DDIIS",	},
+{"crafts",		"mining",		"gem.cutting",		"", 			"cr.mi.ge.",					"DDIIS",	},
+{"crafts",		"mining",		"gem",				"polishing",	"cr.mi.ge.",					"DIISS",	},
+{"crafts",		"mining",		"gem",				"setting",		"cr.mi.ge.",					"DIISS",	},
+{"crafts",		"mining",		"ore",				"", 			"cr.mi.ore",					"DIISS",	},
+{"crafts",		"mining",		"ore",				"panning",		"cr.mi.ore.panning",			"DIISS",	},
+{"crafts",		"mining",		"mineral",			"", 			"cr.mi.mineral",				"DIISS",	},
+{"crafts",		"hunting",		"",					"", 			"cr.hunting",					"DDIII",	},
+{"crafts",		"hunting",		"tracking",			"", 			"cr.hu.tracking",				"DDIII",	},
+{"crafts",		"hunting",		"fishing",			"", 			"cr.hu.fishing",				"DDIII",	},
+{"crafts",		"hunting",		"trapping",			"", 			"cr.hu.trapping",				"DDIII",	},
+{"crafts",		"hunting",		"foraging",			"", 			"cr.hu.foraging",				"DDIII",	},
+{"crafts",		"carpentry",	"",					"", 			"cr.carpentry",					"DDIIS",	},
+{"crafts",		"carpentry",	"furniture",		"", 			"cr.ca.furniture",				"DDIIS",	},
+{"crafts",		"carpentry",	"coopering",		"", 			"cr.ca.coopering",				"DDIIS",	},
+{"crafts",		"carpentry",	"turning",			"", 			"cr.ca.turning",				"DDIIS",	},
+{"crafts",		"carpentry",	"whittling",		"", 			"cr.ca.whittling",				"DDIIS",	},
+{"crafts",		"pottery",		"",					"", 			"cr.pottery",					"DDDII",	},
+{"crafts",		"pottery",		"forming",			"", 			"cr.po.forming",				"DDDII",	},
+{"crafts",		"pottery",		"throwing",			"", 			"cr.po.throwing",				"DDDII",	},
+{"crafts",		"pottery",		"shaping",			"", 			"cr.po.shaping",				"DDDII",	},
+{"crafts",		"pottery",		"glazing",			"", 			"cr.po.glazing",				"DDDII",	},
+{"crafts",		"pottery",		"staining",			"", 			"cr.po.staining",				"DDDII",	},
+{"crafts",		"pottery",		"firing",			"", 			"cr.po.firing",					"DDDII",	},
+{"crafts",		"materials",	"", 				"", 			"cr.materials",					"DDIIS",	},
+{"crafts",		"materials",	"tanning",			"", 			"cr.ma.tanning",				"DDIIS",	},
+{"crafts",		"materials",	"leatherwork",		"", 			"cr.ma.leatherwork",			"DDIIS",	},
+{"crafts",		"materials",	"weaving",			"", 			"cr.ma.weaving",				"DDIIS",	},
+{"crafts",		"materials",	"spinning",			"", 			"cr.ma.spinning",				"DDIIS",	},
+{"crafts",		"materials",	"needlework",		"", 			"cr.ma.needlework",				"DDIIS",	},
+{"crafts",		"materials",	"dyeing",			"", 			"cr.ma.dyeing",					"DDIIS",	},
+{"crafts",		"husbandry",	"", 				"", 			"cr.husbandry",					"IIIWW",	},
+{"crafts",		"husbandry",	"plant",			"", 			"cr.hu.plant",					"IIIWW",	},
+{"crafts",		"husbandry",	"plant",			"edible",		"cr.hu.pl.edible",				"IIIWW",	},
+{"crafts",		"husbandry",	"plant",			"herbal",		"cr.hu.pl.herbal",				"IIIWW",	},
+{"crafts",		"husbandry",	"plant",			"milling",		"cr.hu.pl.milling",				"IIIWW",	},
+{"crafts",		"husbandry",	"plant",			"tree",			"cr.hu.pl.tree",				"IIIWW",	},
+{"crafts",		"husbandry",	"animal",			"", 			"cr.hu.animal",					"IIIWW",	},
+{"crafts",		"husbandry",	"animal",			"grooming",		"cr.hu.an.grooming",			"IIIWW",	},
+{"crafts",		"husbandry",	"animal",			"breeding",		"cr.hu.an.breeding",			"IIIWW",	},
+{"crafts",		"husbandry",	"animal",			"slaughtering",	"cr.hu.animal.slaughtering",	"IIIWW",	},
+{"crafts",		"culinary",		"", 				"", 			"cr.culinary",					"DDIII",	},
+{"crafts",		"culinary",		"cooking",			"", 			"cr.cu.cooking",				"DDIII",	},
+{"crafts",		"culinary",		"baking",			"",	 			"cr.cu.baking",					"DDIII",	},
+{"crafts",		"culinary",		"butchering",		"", 			"cr.cu.butchering",				"DDIII",	},
+{"crafts",		"culinary",		"preserving",		"", 			"cr.cu.preserving",				"DDIII",	},
+{"crafts",		"culinary",		"brewing",			"",			 	"cr.cu.brewing",				"DDIII",	},
+{"crafts",		"culinary",		"distilling",		"",			 	"cr.cu.distilling",				"DDIII",	},
+{"crafts",		"medicine",		"", 				"", 			"cr.medicine",					"DIIWW",	},
+{"crafts",		"medicine",		"firstaid",			"", 			"cr.me.firstaid",				"DIIWW",	},
+{"crafts",		"medicine",		"diagnosis",		"", 			"cr.me.diagnosis",				"DIIWW",	},
+{"crafts",		"medicine",		"treatment",		"", 			"cr.me.treatment",				"DIIWW",	},
+{"crafts",		"medicine",		"treatment",		"disease",		"cr.me.tr.disease",				"DIIWW",	},
+{"crafts",		"medicine",		"treatment",		"injury",		"cr.me.tr.injury",				"DIIWW",	},
+{"crafts",		"medicine",		"treatment",		"poison",		"cr.me.tr.poison",				"DIIWW",	},
+{"crafts",		"arts",			"", 				"", 			"cr.arts",						"DIIII",	},
+{"crafts",		"arts",			"design",			"", 			"cr.ar.design",					"DIIII",	},
+{"crafts",		"arts",			"calligraphy",		"", 			"cr.ar.calligraphy",			"DIIII",	},
+{"crafts",		"arts",			"drawing",			"", 			"cr.ar.drawing",				"DIIII",	},
+{"crafts",		"arts",			"painting",			"", 			"cr.ar.painting",				"DIIII",	},
+{"crafts",		"arts",			"printing",			"", 			"cr.ar.printing",				"DIIII",	},
+{"crafts",		"arts",			"sculpture",		"", 			"cr.ar.sculpture",				"DIIII",	},
+{"crafts",		"music",		"", 				"", 			"cr.music",						"DIIII",	},
+{"crafts",		"music",		"instruments",		"", 			"cr.mu.instruments",			"DIIII",	},
+{"crafts",		"music",		"instruments",		"percussion",	"cr.mu.in.percussion",			"DIIII",	},
+{"crafts",		"music",		"instruments",		"wind",			"cr.mu.in.wind",				"DIIII",	},
+{"crafts",		"music",		"instruments",		"stringed",		"cr.mu.in.stringed",			"DIIII",	},
+{"crafts",		"music",		"instruments",		"keyboard",		"cr.mu.in.keyboard",			"DIIII",	},
+{"crafts",		"music",		"instruments",		"vocal",		"cr.mu.in.vocal",				"DIIII",	},
+{"crafts",		"music",		"special",			"", 			"cr.mu.special",				"DIIII",	},
+{"crafts",		"music",		"theory",			"", 			"cr.mu.theory",					"DIIII",	},
+{"crafts",		"music",		"performance",		"", 			"cr.mu.performance",			"DIIII",	},
+{"crafts",		"points",		"", 				"", 			"cr.points",					"DDIIW",	},
+{"faith",		"",				"", 				"", 			"faith",						"ISWWW",	},
+{"faith",		"rituals",		"", 				"", 			"fa.rituals",					"ISWWW",	},
+{"faith",		"rituals",		"offensive",		"", 			"fa.ri.offensive",				"ISWWW",	},
+{"faith",		"rituals",		"offensive",		"area",			"fa.ri.of.area",				"ISSWW",	},
+{"faith",		"rituals",		"offensive",		"target",		"fa.ri.of.target",				"ISSWW",	},
+{"faith",		"rituals",		"defensive",		"", 			"fa.ri.defensive",				"DDIWW",	},
+{"faith",		"rituals",		"defensive",		"area",			"fa.ri.de.area",				"DDIWW",	},
+{"faith",		"rituals",		"defensive",		"self",			"fa.ri.de.self",				"DDIWW",	},
+{"faith",		"rituals",		"defensive",		"target",		"fa.ri.de.target",				"DDIWW",	},
+{"faith",		"rituals",		"curing",			"", 			"fa.ri.curing",					"CCIWW",	},
+{"faith",		"rituals",		"curing",			"self",			"fa.ri.cu.self",				"CCIWW",	},
+{"faith",		"rituals",		"curing",			"target",		"fa.ri.cu.target",				"CCIWW",	},
+{"faith",		"rituals",		"misc",				"", 			"fa.ri.misc",					"IIWWW",	},
+{"faith",		"rituals",		"misc",				"area",			"fa.ri.mi.area",				"IIWWW",	},
+{"faith",		"rituals",		"misc",				"self",			"fa.ri.mi.self",				"IIWWW",	},
+{"faith",		"rituals",		"misc",				"target",		"fa.ri.mi.target",				"IIWWW",	},
+{"faith",		"rituals",		"special",			"", 			"fa.ri.special",				"ISWWW",	},
+{"faith",		"items",		"", 				"", 			"fa.items",						"DIIWW",	},
+{"faith",		"items",		"rod",				"", 			"fa.it.rod",					"DIIWW",	},
+{"faith",		"items",		"scroll",			"", 			"fa.it.scroll",					"DIIWW",	},
+{"faith",		"points",		"", 				"", 			"fa.points",					"CIIWW",	},
+{"fighting",	"",				"", 				"", 			"fighting",						"CDDSS",	},
+{"fighting",	"melee",		"", 				"", 			"fi.melee",						"CDDSS",	},
+{"fighting",	"melee",		"dagger",			"", 			"fi.me.dagger",					"DDDDS",	},
+{"fighting",	"melee",		"sword",			"", 			"fi.me.sword",					"DDDSS",	},
+{"fighting",	"melee",		"heavysword",		"", 			"fi.me.heavysword",				"CDSSS",	},
+{"fighting",	"melee",		"axe",				"", 			"fi.me.axe",					"CDSSS",	},
+{"fighting",	"melee",		"mace",				"", 			"fi.me.mace",					"CCDSS",	},
+{"fighting",	"melee",		"flail",			"", 			"fi.me.flail",					"CDDSS",	},
+{"fighting",	"melee",		"polearm",			"", 			"fi.me.polearm",				"CCSSS",	},
+{"fighting",	"melee",		"misc",				"", 			"fi.me.misc",					"CDDSS",	},
+{"fighting",	"range",		"", 				"", 			"fi.range",						"DDDSS",	},
+{"fighting",	"range",		"thrown",			"", 			"fi.ra.thrown",					"DDDSS",	},
+{"fighting",	"range",		"bow",				"", 			"fi.ra.bow",					"DDSSS",	},
+{"fighting",	"range",		"fired",			"", 			"fi.ra.fired",					"DDDDS",	},
+{"fighting",	"unarmed",		"", 				"", 			"fi.unarmed",					"DDSSW",	},
+{"fighting",	"unarmed",		"striking",			"", 			"fi.un.striking",				"DDSWW",	},
+{"fighting",	"unarmed",		"grappling",		"", 			"fi.un.grappling",				"DDSSW",	},
+{"fighting",	"defence",		"", 				"", 			"fi.defence",					"DDSSW",	},
+{"fighting",	"defence",		"parrying",			"", 			"fi.de.parrying",				"DDDSW",	},
+{"fighting",	"defence",		"blocking",			"", 			"fi.de.blocking",				"DDSSW",	},
+{"fighting",	"defence",		"dodging",			"", 			"fi.de.dodging",				"DDDDW",	},
+{"fighting",	"special",		"", 				"", 			"fi.special",					"CDIIS",	},
+{"fighting",	"special",		"weapon",			"", 			"fi.sp.weapon",					"DIIIS",	},
+{"fighting",	"special",		"unarmed",			"", 			"fi.sp.unarmed",				"DDIII",	},
+{"fighting",	"special",		"tactics",			"", 			"fi.sp.tactics",				"IIIWW",	},
+{"fighting",	"special",		"mounted",			"", 			"fi.sp.mounted",				"CCDDW",	},
+{"fighting",	"points",		"", 				"", 			"fi.points",					"CCDSS",	},
+{"magic",		"",				"", 				"", 			"magic",						"DIIIW",	},
+{"magic",		"spells",		"", 				"", 			"ma.spells",					"DIIWW",	},
+{"magic",		"spells",		"offensive",		"", 			"ma.sp.offensive",				"IISSW",	},
+{"magic",		"spells",		"defensive",		"", 			"ma.sp.defensive",				"CCIIW",	},
+{"magic",		"spells",		"misc",				"", 			"ma.sp.misc",					"DDIIW",	},
+{"magic",		"spells",		"special",			"", 			"ma.sp.special",				"IIWWW",	},
+{"magic",		"methods",		"", 				"", 			"ma.methods",					"DIIIW",	},
+{"magic",		"methods",		"elemental",		"", 			"ma.me.elemental",				"CCCII",	},
+{"magic",		"methods",		"elemental",		"air",			"ma.me.el.air",					"CCCII",	},
+{"magic",		"methods",		"elemental",		"earth",		"ma.me.el.earth",				"CCCII",	},
+{"magic",		"methods",		"elemental",		"fire",			"ma.me.el.fire",				"CCCII",	},
+{"magic",		"methods",		"elemental",		"water",		"ma.me.el.water",				"CCCII",	},
+{"magic",		"methods",		"mental",			"", 			"ma.me.mental",					"IIIII",	},
+{"magic",		"methods",		"mental",			"animating",	"ma.me.me.animating",			"IIIII",	},
+{"magic",		"methods",		"mental",			"channeling",	"ma.me.me.channeling",			"IIIII",	},
+{"magic",		"methods",		"mental",			"charming",		"ma.me.me.charming",			"IIIII",	},
+{"magic",		"methods",		"mental",			"convoking",	"ma.me.me.convoking",			"IIIII",	},
+{"magic",		"methods",		"mental",			"cursing",		"ma.me.me.cursing",				"IIIII",	},
+{"magic",		"methods",		"physical",			"", 			"ma.me.physical",				"DDDII",	},
+{"magic",		"methods",		"physical",			"binding",		"ma.me.ph.binding",				"DDDII",	},
+{"magic",		"methods",		"physical",			"brewing",		"ma.me.ph.brewing",				"DDDII",	},
+{"magic",		"methods",		"physical",			"chanting",		"ma.me.ph.chanting",			"DDDII",	},
+{"magic",		"methods",		"physical",			"dancing",		"ma.me.ph.dancing",				"DDDII",	},
+{"magic",		"methods",		"physical",			"enchanting",	"ma.me.ph.enchanting",			"DDDII",	},
+{"magic",		"methods",		"physical",			"evoking",		"ma.me.ph.evoking",				"DDDII",	},
+{"magic",		"methods",		"physical",			"healing",		"ma.me.ph.healing",				"DDDII",	},
+{"magic",		"methods",		"physical",			"scrying",		"ma.me.ph.scrying",				"DDDII",	},
+{"magic",		"methods",		"spiritual",		"", 			"ma.me.spiritual",				"IIWWW",	},
+{"magic",		"methods",		"spiritual",		"abjuring",		"ma.me.sp.abjuring",			"IIWWW",	},
+{"magic",		"methods",		"spiritual",		"banishing",	"ma.me.sp.banishing",			"IIWWW",	},
+{"magic",		"methods",		"spiritual",		"conjuring",	"ma.me.sp.conjuring",			"IIWWW",	},
+{"magic",		"methods",		"spiritual",		"divining",		"ma.me.sp.divining",			"IIWWW",	},
+{"magic",		"methods",		"spiritual",		"summoning",	"ma.me.sp.summoning",			"IIWWW",	},
+{"magic",		"items",		"", 				"", 			"ma.items",						"DIIWW",	},
+{"magic",		"items",		"held",				"", 			"ma.it.held",					"DIIWW",	},
+{"magic",		"items",		"held",				"wand",			"ma.it.he.wand",				"DIIWW",	},
+{"magic",		"items",		"held",				"rod",			"ma.it.he.rod",					"DIIWW",	},
+{"magic",		"items",		"held",				"staff",		"ma.it.he.staff",				"DIIWW",	},
+{"magic",		"items",		"held",				"broom",		"ma.it.he.broom",				"DIIWW",	},
+{"magic",		"items",		"worn",				"", 			"ma.it.worn",					"DIIWW",	},
+{"magic",		"items",		"worn",				"amulet",		"ma.it.wo.amulet",				"DIIWW",	},
+{"magic",		"items",		"worn",				"ring",			"ma.it.wo.ring",				"DIIWW",	},
+{"magic",		"items",		"scroll",			"", 			"ma.it.scroll",					"DIIWW",	},
+{"magic",		"items",		"talisman",			"", 			"ma.it.talisman",				"DIIWW",	},
+{"magic",		"points",		"", 				"", 			"ma.points",					"IISWW",	},
+{"people",		"",				"", 				"", 			"people",						"",	},
+{"people",		"trading",		"", 				"", 			"pe.trading",					"",	},
+{"people",		"trading",		"buying",			"", 			"pe.tr.buying",					"IIIIW",	},
+{"people",		"trading",		"selling",			"", 			"pe.tr.selling",				"IIIIW",	},
+{"people",		"trading",		"valueing",			"", 			"pe.tr.valueing",				"",	},
+{"people",		"trading",		"valueing",			"gems",			"pe.tr.va.gems",				"IIIIW",	},
+{"people",		"trading",		"valueing",			"jewellery",	"pe.tr.va.jewellery",			"IIIIW",	},
+{"people",		"trading",		"valueing",			"weapons",		"pe.tr.va.weapons",				"IIIIW",	},
+{"people",		"trading",		"valueing",			"armour",		"pe.tr.va.armour",				"IIIIW",	},
+{"people",		"teaching",		"", 				"", 			"pe.teaching",					"",	},
+{"people",		"teaching",		"covert",			"", 			"pe.te.covert",					"CDDII",	},
+{"people",		"teaching",		"crafts",			"", 			"pe.te.crafts",					"DDIIW",	},
+{"people",		"teaching",		"faith",			"", 			"pe.te.faith",					"CIIWW",	},
+{"people",		"teaching",		"fighting",			"", 			"pe.te.fighting",				"CDDSS",	},
+{"people",		"teaching",		"magic",			"", 			"pe.te.magic",					"IISWW",	},
+{"people",		"teaching",		"people",			"", 			"pe.te.people",					"CDISW",	},
+{"people",		"teaching",		"adventuring",		"", 			"pe.te.adventuring",			"CCCDS",	},
+{"people",		"culture",		"", 				"", 			"pe.culture",					"",	},
+{"people",		"culture",		"ankhmorporkian",	"", 			"pe.cu.ankhmorporkian",			"IIIWW",	},
+{"people",		"culture",		"djelian",			"", 			"pe.cu.djelian",				"IIIWW",	},
+{"people",		"culture",		"ephebian",			"", 			"pe.cu.ephebian",				"IIIWW",	},
+{"people",		"culture",		"agatean",			"", 			"pe.cu.agatean",				"IIIWW",	},
+{"people",		"culture",		"lancrastian",		"", 			"pe.cu.lancrastian",			"IIIWW",	},
+{"people",		"points",		"", 				"", 			"pe.points",					"CDISW",	},
+}
+
+
+--[[
+adventuring.evaluating							
+adventuring.health	4	0	0	1	0	Dialapishe	Lanfear
+adventuring.movement							
+adventuring.movement.climbing							
+adventuring.movement.climbing.rock	2	2	0	1	0	Zandramas	Lanfear
+adventuring.movement.climbing.rope	2	2	0	1	0	Leyan	Lanfear
+adventuring.movement.climbing.tree	2	2	0	1	0	Ekko	Lanfear
+adventuring.movement.following							
+adventuring.movement.following.evade	2	2	0	1	0	Lanfear	Lanfear
+adventuring.movement.following.pursuit	2	2	0	1	0	Lanfear	Lanfear
+adventuring.movement.riding							
+adventuring.movement.riding.camel	2	2	0	1	0	Lanfear	Lanfear
+adventuring.movement.riding.horse	2	2	0	1	0	Yvain	Lanfear
+adventuring.movement.sailing	2	2	0	1	0	kiki	Lanfear
+adventuring.movement.swimming	2	2	0	1	0	Westley	Lanfear
+adventuring.perception	0	0	2	0	3	Lanfear	Lanfear
+adventuring.points	1	1	1	1	1	Lanfear	Lanfear
+covert							
+covert.casing							
+covert.casing.person	0	1	2	0	2	Leyan	Gellan
+covert.casing.place	0	1	2	0	2	Thrakkozz	ilenore
+covert.hiding							
+covert.hiding.object	0	2	2	1	0	Gellan	Gellan
+covert.hiding.person	0	2	2	1	0	ilenore	ilenore
+covert.items							
+covert.items.poisons	0	1	4	0	0	Leyan	Leyan
+covert.items.traps	0	1	4	0	0	Thrakkozz	Lanfear
+covert.items.weapons	0	1	4	0	0	Lanfear	Lanfear
+covert.lockpick							
+covert.lockpick.doors	0	4	1	0	0	Riverphoenix	Riverphoenix
+covert.lockpick.safes	0	4	1	0	0	Thrakkozz	ilenore
+covert.lockpick.traps	0	4	1	0	0	Thrakkozz	Lanfear
+covert.manipulation							
+covert.manipulation.palming	0	2	1	2	0	Gellan	Gellan
+covert.manipulation.passing	0	2	1	2	0	Grant	Gellan
+covert.manipulation.sleight-of-hand	0	2	1	2	0	Gellan	Gellan
+covert.manipulation.stealing	0	2	1	2	0	Nuala	Lanfear
+covert.points	1	2	2	0	0	Lanfear	Lanfear
+covert.stealth							
+covert.stealth.inside	0	3	1	1	0	Lanfear	Lanfear
+covert.stealth.outside	0	3	1	1	0	ilenore	Lanfear
+covert.stealth.underwater	0	3	1	1	0	ilenore	ilenore
+crafts							
+crafts.arts							
+crafts.arts.calligraphy	0	1	4	0	0	Mauve	Huupatux
+crafts.arts.design	0	1	4	0	0	Thalic	Huupatux
+crafts.arts.drawing	0	1	4	0	0	Huupatux	Huupatux
+crafts.arts.painting	0	1	4	0	0	Grime	Huupatux
+crafts.arts.printing	0	1	4	0	0	Huupatux	Huupatux
+crafts.arts.sculpture	0	1	4	0	0	Thalic	Huupatux
+crafts.carpentry							
+crafts.carpentry.coopering	0	2	2	1	0	Huupatux	Huupatux
+crafts.carpentry.furniture	0	2	2	1	0	Huupatux	Huupatux
+crafts.carpentry.turning	0	2	2	1	0	Kari	Huupatux
+crafts.carpentry.whittling	0	2	2	1	0	Kari	Kari
+crafts.culinary							
+crafts.culinary.baking	0	2	3	0	0	Huupatux	Huupatux
+crafts.culinary.brewing	0	2	3	0	0	Huupatux	Huupatux
+crafts.culinary.butchering	0	2	3	0	0	Huupatux	Huupatux
+crafts.culinary.cooking	0	2	3	0	0	Huupatux	Huupatux
+crafts.culinary.distilling	0	2	3	0	0	Huupatux	Huupatux
+crafts.culinary.preserving	0	2	3	0	0	Huupatux	Huupatux
+crafts.hunting							
+crafts.hunting.fishing	0	2	3	0	0	Tarzan	Huupatux
+crafts.hunting.foraging	0	2	3	0	0	cheeky	Huupatux
+crafts.hunting.tracking	0	2	3	0	0	Shalimar	Huupatux
+crafts.hunting.trapping	0	2	3	0	0	Ekko	Huupatux
+crafts.husbandry							
+crafts.husbandry.animal							
+crafts.husbandry.animal.breeding	0	0	3	0	2	Huupatux	Huupatux
+crafts.husbandry.animal.grooming	0	0	3	0	2	Juppie	Huupatux
+crafts.husbandry.animal.slaughtering	0	0	3	0	2	Juppie	Huupatux
+crafts.husbandry.plant							
+crafts.husbandry.plant.edible	0	0	3	0	2	Huupatux	Huupatux
+crafts.husbandry.plant.herbal	0	0	3	0	2	Huupatux	Huupatux
+crafts.husbandry.plant.milling	0	0	3	0	2	Huupatux	Huupatux
+crafts.husbandry.plant.tree	0	0	3	0	2	Huupatux	Huupatux
+crafts.materials							
+crafts.materials.dyeing	0	2	2	1	0	Nekkrist	Huupatux
+crafts.materials.leatherwork	0	2	2	1	0	Ekko	Huupatux
+crafts.materials.needlework	0	2	2	1	0	Zari	Huupatux
+crafts.materials.spinning	0	2	2	1	0	Huupatux	Huupatux
+crafts.materials.tanning	0	2	2	1	0	Nekkrist	Huupatux
+crafts.materials.weaving	0	2	2	1	0	Huupatux	Huupatux
+crafts.medicine							
+crafts.medicine.diagnosis	0	1	2	0	2	Paff	Huupatux
+crafts.medicine.firstaid	0	1	2	0	2	Lanfear	Huupatux
+crafts.medicine.treatment							
+crafts.medicine.treatment.disease	0	1	2	0	2	Huupatux	Huupatux
+crafts.medicine.treatment.injury	0	1	2	0	2	Quotid	Huupatux
+crafts.medicine.treatment.poison	0	1	2	0	2	Huupatux	Huupatux
+crafts.mining							
+crafts.mining.gem	0	1	2	2	0	Huupatux	Huupatux
+crafts.mining.mineral	0	1	2	2	0	Huupatux	Huupatux
+crafts.mining.ore							
+crafts.mining.ore.panning	0	1	2	2	0	Huupatux	Huupatux
+crafts.music							
+crafts.music.instruments							
+crafts.music.instruments.keyboard	0	1	4	0	0	huFF	Huupatux
+crafts.music.instruments.percussion	0	1	4	0	0	Lanfear	Huupatux
+crafts.music.instruments.stringed	0	1	4	0	0	Lanfear	Huupatux
+crafts.music.instruments.vocal	0	1	4	0	0	Paff	Huupatux
+crafts.music.instruments.wind	0	1	4	0	0	Elauna	Huupatux
+crafts.music.performance	0	1	4	0	0	Paff	Huupatux
+crafts.music.special	0	1	4	0	0	Paff	Huupatux
+crafts.music.theory	0	1	4	0	0	Paff	Huupatux
+crafts.points	0	2	2	0	1	Lanfear	Huupatux
+crafts.pottery							
+crafts.pottery.firing	0	3	2	0	0	Huupatux	Huupatux
+crafts.pottery.forming							
+crafts.pottery.forming.shaping	0	3	2	0	0	Huupatux	Huupatux
+crafts.pottery.forming.throwing	0	3	2	0	0	Huupatux	Huupatux
+crafts.pottery.glazing	0	3	2	0	0	Huupatux	Huupatux
+crafts.pottery.staining	0	3	2	0	0	Huupatux	Huupatux
+crafts.smithing							
+crafts.smithing.black							
+crafts.smithing.black.armour	0	2	2	1	0	Huupatux	Huupatux
+crafts.smithing.black.tools	0	2	2	1	0	Kari	Huupatux
+crafts.smithing.black.weapons	0	2	2	1	0	Tribalsun	Huupatux
+crafts.smithing.gem							
+crafts.smithing.gem.cutting	0	2	2	1	0	Huupatux	Huupatux
+crafts.smithing.gem.polishing	0	2	2	1	0	Huupatux	Huupatux
+crafts.smithing.gem.setting	0	2	2	1	0	Huupatux	Huupatux
+crafts.smithing.gold	0	2	2	1	0	Kari	Huupatux
+crafts.smithing.locks	0	2	2	1	0	Huupatux	Huupatux
+crafts.smithing.silver	0	2	2	1	0	Huupatux	Huupatux
+faith							
+faith.items							
+faith.items.rod	0	1	2	0	2	Kloke	Juppie
+faith.items.scroll	0	1	2	0	2	Juppie	Juppie
+faith.points	1	0	2	0	2	scouter	Juppie
+faith.rituals							
+faith.rituals.curing							
+faith.rituals.curing.self	2	0	1	0	2	Juppie	Juppie
+faith.rituals.curing.target	2	0	1	0	2	Juppie	Juppie
+faith.rituals.defensive							
+faith.rituals.defensive.area	0	2	1	0	2	Iblis	Juppie
+faith.rituals.defensive.self	0	2	1	0	2	Juppie	Juppie
+faith.rituals.defensive.target	0	2	1	0	2	Phantomracer	Juppie
+faith.rituals.misc							
+faith.rituals.misc.area	0	0	2	0	3	Iblis	Juppie
+faith.rituals.misc.self	0	0	2	0	3	Juppie	Juppie
+faith.rituals.misc.target	0	0	2	0	3	Juppie	Juppie
+faith.rituals.offensive							
+faith.rituals.offensive.area	0	0	1	2	2	Iblis	Juppie
+faith.rituals.offensive.target	0	0	1	2	2	Cinnamon	Juppie
+faith.rituals.special	0	0	1	1	3	Inige	Juppie
+fighting							
+fighting.defence							
+fighting.defence.blocking	0	2	0	2	1	Westley	Lanfear
+fighting.defence.dodging	0	4	0	0	1	Kikimora	Lanfear
+fighting.defence.parrying	0	3	0	1	1	Lanfear	Lanfear
+fighting.melee							
+fighting.melee.axe	1	1	0	3	0	Lanfear	Lanfear
+fighting.melee.dagger	0	4	0	1	0	Kikimora	Lanfear
+fighting.melee.flail	1	2	0	2	0	Mavado	Lanfear
+fighting.melee.heavy-sword	1	1	0	3	0	Inige	Lanfear
+fighting.melee.mace	2	1	0	2	0	Lanfear	Lanfear
+fighting.melee.misc	1	2	0	2	0	Lanfear	Lanfear
+fighting.melee.polearm	2	0	0	3	0	Dialapishe	Lanfear
+fighting.melee.sword	0	3	0	2	0	Lanfear	Lanfear
+fighting.points	2	1	0	2	0	Lanfear	Lanfear
+fighting.range							
+fighting.range.bow	0	2	0	3	0	Lanfear	Lanfear
+fighting.range.fired	0	4	0	1	0	Kanashimi	Leyan
+fighting.range.thrown	0	3	0	2	0	llylia	Leyan
+fighting.special							
+fighting.special.mounted	2	2	0	0	1	Barbarian	Lanfear
+fighting.special.tactics	0	0	3	0	2	Quotid	Lanfear
+fighting.special.unarmed	0	2	3	0	0	Shmant	Leyan
+fighting.special.weapon	0	1	3	1	0	Lanfear	Lanfear
+fighting.unarmed							
+fighting.unarmed.grappling	0	2	0	2	1	Lanfear	Lanfear
+fighting.unarmed.striking	0	2	0	1	2	Anastazja	Lanfear
+magic							
+magic.items							
+magic.items.held							
+magic.items.held.broom	0	1	2	0	2	Geryon	Geryon
+magic.items.held.rod	0	1	2	0	2	Geryon	Geryon
+magic.items.held.staff	0	1	2	0	2	Geryon	Geryon
+magic.items.held.wand	0	1	2	0	2	Geryon	Geryon
+magic.items.scroll	0	1	2	0	2	Geryon	Geryon
+magic.items.talisman	0	1	2	0	2	Ochrion	Geryon
+magic.items.worn							
+magic.items.worn.amulet	0	1	2	0	2	Geryon	Geryon
+magic.items.worn.ring	0	1	2	0	2	Ochrion	Geryon
+magic.methods							
+magic.methods.elemental							
+magic.methods.elemental.air	3	0	2	0	0	Geryon	Geryon
+magic.methods.elemental.earth	3	0	2	0	0	Geryon	Geryon
+magic.methods.elemental.fire	3	0	2	0	0	Geryon	Geryon
+magic.methods.elemental.water	3	0	2	0	0	Geryon	Geryon
+magic.methods.mental							
+magic.methods.mental.animating	0	0	5	0	0	Geryon	Geryon
+magic.methods.mental.channeling	0	0	5	0	0	Ochrion	Geryon
+magic.methods.mental.charming	0	0	5	0	0	Geryon	Geryon
+magic.methods.mental.convoking	0	0	5	0	0	Geryon	Geryon
+magic.methods.mental.cursing	0	0	5	0	0	Geryon	Geryon
+magic.methods.physical							
+magic.methods.physical.binding	0	3	2	0	0	Geryon	Geryon
+magic.methods.physical.brewing	0	3	2	0	0	Kikimora	Geryon
+magic.methods.physical.chanting	0	3	2	0	0	Ochrion	Geryon
+magic.methods.physical.dancing	0	3	2	0	0	Geryon	Geryon
+magic.methods.physical.enchanting	0	3	2	0	0	Geryon	Geryon
+magic.methods.physical.evoking	0	3	2	0	0	Geryon	Geryon
+magic.methods.physical.healing	0	3	2	0	0	Geryon	Geryon
+magic.methods.physical.scrying	0	3	2	0	0	Geryon	Geryon
+magic.methods.spiritual							
+magic.methods.spiritual.abjuring	0	0	2	0	3	Geryon	Geryon
+magic.methods.spiritual.banishing	0	0	2	0	3	Geryon	Geryon
+magic.methods.spiritual.conjuring	0	0	2	0	3	Ochrion	Geryon
+magic.methods.spiritual.divining	0	0	2	0	3	Geryon	Geryon
+magic.methods.spiritual.summoning	0	0	2	0	3	Geryon	Geryon
+magic.points	0	0	2	1	2	Lanfear	Geryon
+magic.spells							
+magic.spells.defensive	2	0	2	0	1	Geryon	Geryon
+magic.spells.misc	0	2	2	0	1	Geryon	Geryon
+magic.spells.offensive	0	0	2	2	1	Geryon	Geryon
+magic.spells.special	0	0	2	0	3	Geryon	Geryon
+people							
+people.culture							
+people.culture.agatean	0	0	3	0	2	scouter	scouter
+people.culture.ankh-morporkian	0	0	3	0	2	Juppie	scouter
+people.culture.djelian	0	0	3	0	2	Juppie	scouter
+people.culture.ephebian	0	0	3	0	2	Juppie	scouter
+people.culture.lancrastian	0	0	3	0	2	Juppie	scouter
+people.points	1	1	1	1	1	Lanfear	Lanfear
+people.teaching							
+people.teaching.adventuring	1	1	1	1	1	Lanfear	Lanfear
+people.teaching.covert	1	2	2	0	0	Lanfear	Lanfear
+people.teaching.crafts	0	2	2	0	1	Huupatux	Lanfear
+people.teaching.faith	1	0	2	0	2	Juppie	Lanfear
+people.teaching.fighting	1	2	0	2	0	Lanfear	Lanfear
+people.teaching.magic	0	0	2	1	2	Geryon	Geryon
+people.teaching.people	1	1	1	1	1	Lanfear	Lanfear
+people.trading							
+people.trading.buying	0	0	4	0	1	scouter	scouter
+people.trading.selling	0	0	4	0	1	scouter	scouter
+people.trading.valueing							
+people.trading.valueing.armour	0	0	4	0	1	Nuala	Lanfear
+people.trading.valueing.gems	0	0	4	0	1	Nuala	Lanfear
+people.trading.valueing.jewellery	0	0	4	0	1	scouter	scouter
+people.trading.valueing.weapons	0	0	4	0	1	scouter	Lanfear
+
+		Skill Bonuses
+The mud computes the Skill Bonus for a skill as the product of the Raw Level Bonus function R (depending only on the skill level) and the Stat Multiplicator function M (depending only on the values (a,b,c,d,e) of the stats used by the skill):
+
+Bonus( level, (a,b,c,d,e) ) = RoundDown( M(a,b,c,d,e) * R(level) )
+
+For expample, the bonus a character with Intelligence 12 and Wisdom 18 would get for level 100 in a skill that uses Intelligence twice and Wisdom thrice (like adventuring.perception) can be computed as:
+
+Bonus( 100, (12,12,18,18,18) ) = RoundDown( M(12,12,18,18,18) * R(100) )
+
+For the Raw Level Bonus function R, levels 1 to 20 give 5 bonus points per level, levels 21 to 40 give 2.5 bonus points per level, levels 41 to 60 give 1 bonus point per level. Higher levels give 0.5 additional bonus points each:
+
+for levels from  0 to 20:  R(level) =            5   *  level
+for levels from 21 to 40:  R(level) = RoundDown (2.5 * (level-20) + 100)
+for levels from 41 to 60:  R(level) =            1   * (level-40) + 150
+for levels from 61      :  R(level) = RoundDown (0.5 * (level-60) + 170)
+
+So starting with level 61, the Base Level Bonus - and thus the overall skill bonus - can only increase on even levels.
+
+Finally, the Stat Multiplicator function M depends on the product (and thus the geometric average) of the stat values given, and can be computed by:
+
+M(a,b,c,d,e) = ( 1/9.8 ) * ln( a*b*c*d*e ) - 0.25
+
+The adventuring.perception bonus of a character with level 100 in that skill, Intelligence 12 and Wisdom 18 is thus:
+
+Bonus( 100, (12,12,18,18,18) )
+    = RoundDown( M(12,12,18,18,18) * R(100) )
+    = RoundDown( 1.14... * 190 ) = 216
+]]--
+
+--Add commas every 3 numbers to easier reading
+function AddCommas(n) -- credit http://richard.warburton.it
+	local left,num,right = string.match(n,'^([^%d]*%d)(%d*)(.-)$')
+	return left..(num:reverse():gsub('(%d%d%d)','%1,'):reverse())..right
+end
+
+]]>
+</script> 
+<!--  Triggers  -->
+<triggers> 
+  <trigger
+   enabled="n"
+   omit_from_output="y"
+   match="^(?:Constitution|Dexterity|Intelligence|Strength|Wisdom|Height|Weight) \.\.\.+ .+"
+   regexp="y"
+   send_to="12"
+   name="StatDetector"
+   script="StatDetector"
+   sequence="100"
+  >
+  </trigger>
+</triggers>
+  
+</muclient>

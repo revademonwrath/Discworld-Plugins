@@ -1,0 +1,488 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- AliasFinder by Reva -->
+<!-- Searches aliases for specified text.. -->
+<!-- 'af help' to display help info. -->
+<!-- 'af <text>' to search. -->
+<!-- 'af full <text>' to display full alias list with selected text highlighted. -->
+
+<muclient>
+<script>
+<![CDATA[
+
+--Set to colour for highlighting warnings
+HighlightTextColour = "black"
+HighlightBGColour = "yellow"
+--Set colours for Notes
+NoteTextColour = "salmon"
+NoteTextBGColour = "black"
+
+--Set true for debug messages
+Debug = false
+
+-- WARNING: DO NOT EDIT AFTER HERE UNLESS YOU KNOW WHAT YOU ARE DOING!!!
+sOldRows = "unknown"
+bMatched = false
+bIsGagging = false
+iMatchedCount = 0
+IgnoredLine = {}
+bIgnoredLine = false
+--------------------------------------------------------------------------------
+--   INSTALL AND SAVE
+--------------------------------------------------------------------------------
+require "serialize"  -- needed to serialize table to string
+
+--Changed to happen when entering to be more accurate
+function OnPluginInstall ()
+end -- function OnPluginInstall
+
+function OnPluginDisable()
+end
+
+function OnPluginClose ()
+end
+
+function OnPluginSaveState ()
+	if ToSave == true then
+		if Debug == true then Note("Saved.") end
+	end
+end -- function OnPluginSaveState
+
+function AFHelp (sName, sLine, wildcards)
+	Note("")
+	ColourNote(NoteTextColour, NoteTextBGColour, "'af help' - this help screen.")
+	ColourNote(NoteTextColour, NoteTextBGColour, "'af <text>' to display only aliases with selected text.")
+	ColourNote(NoteTextColour, NoteTextBGColour, "'af full <text>' to display full alias list with selected text highlighted.")
+	ColourNote(NoteTextColour, NoteTextBGColour, "The search is NOT case sensitive.")	
+	ColourNote(NoteTextColour, NoteTextBGColour, "NOTE: To search for the word 'help' or 'full ' use 'af !help' or 'af !full '.")
+	Note("")
+end
+
+Searches = {}
+function FindAlias (sName, sLine, wildcards)
+	if wildcards.key == nil or wildcards.key == "" then
+		ColourNote(NoteTextColour, NoteTextBGColour, "Alias Finder: enter text for search, ex: 'af <text>'.")
+		return
+	end
+
+	SearchKey = wildcards.key
+	
+	--Default is only results
+	DisplayOnlyResults = true
+	if (string.sub(SearchKey, 1, 5) == "full ") then
+		--ColourNote(NoteTextColour, NoteTextBGColour, "Alias Finder: displaying full alias list.")
+		DisplayOnlyResults = false
+		SearchKey = string.sub(SearchKey, 6) 
+	end
+	
+	--Two corrections for escaped searches
+	if SearchKey == "!help" then
+		SearchKey = "help"
+	elseif SearchKey == "!full " then
+		SearchKey = "full "
+	end
+
+	--This is done later
+	--bMatched = false
+	--iMatchedCount = 0
+	--Store settings in table for queued searches
+	table.insert(Searches, {SearchKey, DisplayOnlyResults})
+	--Enable trigger to realise when the MUD starts displaying aliases
+	EnableTrigger("StartAliasLine", true)
+	--Enable trigger to hide commands being sent if they get queued
+	EnableTrigger("GagQueuedCommands", true)
+	
+	--Set up for DisplayOnlyResults
+	if DisplayOnlyResults == true then
+		--Timer to remove gag after 30 seconds... just in case, why not add it first thing, safety first!
+		AddTimer ("SafetyGagRemoval", 0, 0, 30, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "UnGagTimer")
+		--If this is the first search, make sure the player does not have to press enter as we are gagging everything
+		--This will be changed back afterwards, I hope you don't have more than half a million rows of aliases
+		if #Searches == 1 then
+			EnableTrigger("CaptureOldRows", true)
+			SendNoEcho("rows 500000")
+			SendNoEcho("alias")
+		end
+	else
+		Send("alias")
+	end
+	--Safety to undo everything in case commands do not go through (unconscious, flying, etc)
+	AddTimer ("SafetyReset", 0, 0, 35, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "SafetyResetAll")	
+end
+
+function StartAliases (sName, sLine, wildcards, styles)
+	if Debug == true then Note("Detected start of aliases.") end
+	--This should be if there are no aliases
+	if wildcards.none == "A total of 0 aliases in 0 categories." then
+		if DisplayOnlyResults == false then
+			for _, v in ipairs (styles) do
+				ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+			end -- for
+			Note("")
+		end
+		EndAliases()
+		return
+	end
+	EnableTrigger("EndAliasLine", true)		
+	EnableTrigger("IgnoreAliasLine", true)		
+	if Searches[1] == nil then
+		if Debug == true then Note("ERROR: No searches in queue!.") end
+		return
+	else
+		if Debug == true then
+			Note("SK = " .. Searches[1][1])
+			Note("DOR = " .. tostring(Searches[1][2]))
+		end
+		--Lets set up what we are doing on this search
+		SearchKey = Searches[1][1]
+		DisplayOnlyResults = Searches[1][2]
+	end
+	--reset to start values
+	bMatched = false
+	iMatchedCount = 0
+	bIgnoredLine = false
+	if DisplayOnlyResults == true then
+		EnableTrigger("GagOutput", true)
+		--And a safety timer in case turning this gag stays on, timer will shut it off in 30 seconds
+		AddTimer ("SafetyGagRemoval", 0, 0, 30, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "UnGagTimer")	
+		bIsGagging = true
+	--Lets put that line back
+	else
+		for _, v in ipairs (styles) do
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+		Note("")
+	end
+	--Create colour trigger to match the text
+	--AddTrigger("FindText"..SearchKey, SearchKey, "", trigger_flag.Enabled + trigger_flag.RegularExpression + trigger_flag.KeepEvaluating + trigger_flag.IgnoreCase, -1, 0, "", "FoundMatch")
+	SetVariable("var_find", SearchKey)
+	--Repeat on same line
+	--SetTriggerOption ("FindText"..SearchKey, "sequence", 1)
+	--SetTriggerOption ("FindText"..SearchKey, "repeat", "y")
+	--Change colour of match, looks like a workaround, but this is the only way I've found to do it
+	--SetTriggerOption ("FindText"..SearchKey, "custom_colour", tostring(17))
+	--SetTriggerOption ("FindText"..SearchKey, "other_text_colour", ColourNameToRGB(HighlightTextColour))
+	--SetTriggerOption ("FindText"..SearchKey, "other_back_colour", ColourNameToRGB(HighlightBGColour))
+	--SetTriggerOption ("FindText"..SearchKey, "group", "All")
+
+end
+
+function FoundMatch (sName, sLine, wildcards, styles)
+	if Debug == true then
+		Note("Found match! Keyword: " .. SearchKey)
+		--Note("sName: " .. sName)
+		--Note("sLine: " .. sLine)
+	end
+	if DisplayOnlyResults == true and bMatched == false then
+		ColourNote(NoteTextColour, NoteTextBGColour, "** MATCH(ES) FOR '" .. SearchKey .. "':")
+		ColourNote(NoteTextColour, NoteTextBGColour, "-----------------" .. string.rep("-",  string.len(SearchKey)) .. "-")
+	end
+
+	--Lets put back the category if we have a match in it
+	local bFirstTime = false
+	if bIgnoredLine == true then
+		for _, v in ipairs (IgnoredLine) do
+			if bFirstTime == false then
+				ColourTell(NoteTextColour, NoteTextBGColour, "* ")
+				bFirstTime = true
+			end
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+		Note("")
+		bIgnoredLine = false
+	end
+	
+	bMatched = true
+	--Fixed to count multiple matches on one line
+	for _ in string.gmatch(string.lower(sLine), string.lower(SearchKey)) do iMatchedCount = iMatchedCount + 1 end
+	--iMatchedCount = iMatchedCount + 1
+
+	local bFirstTime = false
+	if DisplayOnlyResults == true then
+		for _, v in ipairs (styles) do
+			if bFirstTime == false then
+				ColourTell(NoteTextColour, NoteTextBGColour, "* ")
+				bFirstTime = true
+			end
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+		Note("")
+	end	
+end
+
+function EndAliases (sName, sLine, wildcards)
+	if Debug == true then Note("Detected end of aliases.") end
+	EnableTrigger("FindText", false)
+	if DisplayOnlyResults == true and bMatched == true then
+		ColourTell(NoteTextColour, NoteTextBGColour, "** END OF RESULTS FOR '" .. SearchKey .. "'. " )
+	end
+	if bMatched == true then
+		if iMatchedCount == 1 then
+			ColourNote(NoteTextColour, NoteTextBGColour, "(" .. iMatchedCount .. " match)")
+		else
+			ColourNote(NoteTextColour, NoteTextBGColour, "(" .. iMatchedCount .. " matches)")
+		end
+	else
+		ColourNote(NoteTextColour, NoteTextBGColour, "** NO MATCH FOUND FOR '" .. SearchKey .. "'!")
+	end
+	EnableTrigger("IgnoreAliasLine", false)		
+	--Stop blocking output, not iffed for safety measures
+	EnableTrigger("GagOutput", false)	
+	bIsGagging = false
+	--Will be done later for only results
+	DeleteTimer("SafetyGagRemoval")
+	--Too early to do here
+	--EnableTrigger("CaptureNewRows", false)
+	bMatched = false
+	table.remove(Searches, 1)
+	if Searches[1] == nil then
+		if Debug == true then Note("No more searches, shutting down.") end
+		EnableTrigger("StartAliasLine", false)
+		EnableTrigger("EndAliasLine", false)
+		EnableTrigger("CaptureOldRows", false)
+		--change rows back if we changed it for blocking
+		if sOldRows ~= "unknown" and sOldRows ~= "500000" then
+			--SendNoEcho("rows " .. sOldRows)
+			Note("")
+			ColourNote("red", "black", "WARNING!!! 'Rows' was changed from " .. sOldRows .. ", type 'rows " .. sOldRows .. "' to change it back.") 
+			Note("")
+			sOldRows = "unknown"
+		--If not we are not sending more commands, so we can turn this off
+		end
+		EnableTrigger("GagQueuedCommands", false)
+		DeleteTimer("SafetyReset")
+		EnableTrigger("GagQueuedCommands", false)
+		DeleteTriggerGroup("All")
+	end
+end
+
+function CaptureOldRows (sName, sLine, wildcards)
+	if Debug == true then Note("Captured old rows.") end
+
+	--Find out what this setting was
+	sOldRows = wildcards.old_rows
+	--EnableTrigger("CaptureNewRows", true)
+end
+
+function CaptureNewRows (sName, sLine, wildcards)
+	if Debug == true then Note("Captured new rows.") end
+
+	--EnableTrigger("CaptureNewRows", false)
+	--EnableTrigger("GagQueuedCommands", false)
+end
+
+--Another safety measure...
+--This time when it actually gags it will enable a 30 second timer to stop
+function GagOutput (sName, sLine, wildcards)
+	if bIsGagging == false then	
+		AddTimer ("SafetyGagRemoval", 0, 0, 30, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "UnGagTimer")	
+		bIsGagging = true
+	end
+end
+
+--Attempting to put back in the lines in alias output that are not aliases without colouring them
+function IgnoreAliasLine (sName, sLine, wildcards, styles)
+	--Lets capture this line to put it in if we find a match
+	if DisplayOnlyResults == true then
+		IgnoredLine = styles
+		bIgnoredLine = true
+	else
+		for _, v in ipairs (styles) do
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+		Note("")
+	end
+end
+
+function GagQueuedCommands (sName, sLine, wildcards)
+	if Debug == true then Note("Gagged Queued Command.") end
+end
+
+--Safety measure to turn off after 30 seconds just in case!
+function UnGagTimer(sName)
+	if Debug == true then Note("Timer disabling gag. NOTE: This should not have happened") end
+	EnableTrigger("GagOutput", false)	
+	bIsGagging = false
+	--Just in case its still going
+	DeleteTimer("SafetyGagRemoval")
+	EnableTrigger("GagQueuedCommands", false)
+end
+
+--Safety measure to turn off after 30 seconds just in case!
+function SafetyResetAll(sName)
+	if Debug == true then Note("Timer resetting all. NOTE: This should only happen if you were unconscious, flying, etc.") end
+	--Just in case its still going
+	DeleteTimer("SafetyReset")
+	--Resetting everything...
+	Searches = {}
+	if sOldRows ~= "unknown" and sOldRows ~= "500000" then
+		--SendNoEcho("rows " .. sOldRows)
+		ColourNote("red", "black", "** WARNING ** Your rows has been changed from " .. sOldRows .. ", type 'rows " .. sOldRows .. "' to change it back") 
+		sOldRows = "unknown"
+	end
+	EnableTrigger("FindText", false)
+	EnableTrigger("StartAliasLine", false)
+	EnableTrigger("GagQueuedCommands", false)
+	DeleteTimer ("SafetyGagRemoval")
+	EnableTrigger("CaptureOldRows", false)
+	EnableTrigger("EndAliasLine", false)		
+	EnableTrigger("IgnoreAliasLine", false)		
+	EnableTrigger("GagOutput", false)
+	bIsGagging = false
+	DeleteTriggerGroup("All")
+	--EnableTrigger("CaptureNewRows", false)
+end
+--No alias line:
+--You currently have the following aliases:A total of 0 aliases in 0 categories.
+--SetVariable("var_find", "score brief")
+	--SetTriggerOption ("FindText", "sequence", 1)
+	--SetTriggerOption ("FindText", "repeat", "y")
+	--Change colour of match, looks like a workaround, but this is the only way I've found to do it
+	SetTriggerOption ("FindText", "custom_colour", tostring(17))
+	SetTriggerOption ("FindText", "other_text_colour", ColourNameToRGB(HighlightTextColour))
+	SetTriggerOption ("FindText", "other_back_colour", ColourNameToRGB(HighlightBGColour))
+	--SetTriggerOption ("FindText", "group", "All")
+
+]]>
+</script> 
+<plugin
+   name="AliasFinder"
+   author="Reva"
+   id="ae3eb0987546eda429c562c4"
+   language="Lua"
+   purpose="Search Alias List"
+   date_written="2018-04-04"
+   date_modified="2018-04-11"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^af (?<key>.*)?"
+   enabled="y"
+   regexp="y"
+   ignore_case="y"
+   sequence="30"
+   script="FindAlias"
+   name="FindAlias"
+  > 
+  </alias>
+
+  <alias
+   match="af help"
+   enabled="y"
+   ignore_case="y"
+   sequence="29"
+   script="AFHelp"
+   name="DisplayHelp"
+  > 
+  </alias>
+
+</aliases>
+<!--  Triggers  -->
+<triggers> 
+  <trigger
+   enabled="n"
+   ignore_case="y"
+   expand_variables="y"
+   match="(@!var_find)"
+   regexp="y"
+   sequence="100"
+   name="FindText"
+   script="FoundMatch"   
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   omit_from_output="y"
+   match="^(?:> )?You currently have the following aliases\:(?P<none>A total of 0 aliases in 0 categories\.)?$"
+   regexp="y"
+   sequence="12"
+   script="StartAliases"
+   name="StartAliasLine"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   omit_from_output="y"
+   keep_evaluating="y"
+   match=".+"
+   regexp="y"
+   sequence="30"
+   script="GagOutput"
+   name="GagOutput"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^(?:> )?A total of (?:\d+) alias(?:es)? in (?:\d+) (?:category|categories)\.$"
+   regexp="y"
+   sequence="30"
+   script="EndAliases"
+   name="EndAliasLine"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^(?:> )?Rows changed from (?P<old_rows>\d+) to 500000\.$"
+   regexp="y"
+   omit_from_output="y"
+   sequence="90"
+   script="CaptureOldRows"
+   name="CaptureOldRows"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^(?:> )?Rows changed from 500000 to (?:\d+)\.$"
+   regexp="y"
+   omit_from_output="y"
+   sequence="100"
+   script="CaptureNewRows"
+   name="CaptureNewRows"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^(?:> )?(Queued command: rows \d+|Queued command: alias)"
+   regexp="y"
+   omit_from_output="y"
+   sequence="100"
+   name="GagQueuedCommands"
+   script="GagQueuedCommands"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^(The category &quot;.+&quot;:|Default category:)$"
+   regexp="y"
+   omit_from_output="y"
+   sequence="100"
+   name="IgnoreAliasLine"
+   script="IgnoreAliasLine"
+  >
+  </trigger>
+  
+
+
+</triggers>
+
+<!--  Timers  -->
+<timers>
+</timers>
+
+</muclient>

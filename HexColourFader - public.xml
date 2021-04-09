@@ -1,0 +1,786 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- Title for Explanation, by Author -->
+<!-- Other info -->
+
+<muclient>
+<plugin
+   name="HexColourFade"
+   author="Reva"
+   id="aede2643bbef6ea429c56434"
+   language="Lua"
+   purpose="Generate HEX Colour Fade"
+   date_written="2018-10-2"
+   save_state="y"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^hex ?reset"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+	ResetAll()
+  </send>
+  </alias> 
+</aliases>
+<script>
+<![CDATA[
+
+require "json"
+
+if GetVariable("sCurText") ~= nil then
+	sCurText = GetVariable("sCurText")
+else
+	sCurText = "Test string..."
+end
+if (GetVariable("tColours") ~= nil) then
+  tColours = json.decode(GetVariable("tColours"))
+else
+	tColours = {"red", "yellow", "green", "blue"}
+end
+
+bDoubleTags = false
+if (GetVariable("bDoubleTags") == "true") then
+	bDoubleTags = true
+end
+
+function ResetAll()
+	Note("Reseting...")
+	sCurText = "Test string..."
+	tColours = {"red", "yellow", "green", "blue"}
+	WindowPosition(win, 0, 0, miniwin.pos_center_all, 2)
+	update_window()
+end
+
+bShowMiniwindow = true
+
+--Used to determine how many lines in Miniwindow
+iNumberOfColours = 4
+
+function ColourNameToRGBHex(color_name)
+   color = ColourNameToRGB(color_name)
+   low = math.floor(color/65536)
+   color = color - low * 65536
+   mid = math.floor(color/256) * 256
+   color = color - mid
+   high = color * 65536
+   return string.upper(string.format("#%06x", high + mid + low))
+end
+
+function ListColours()
+
+	local repeats = 0
+	local klen = 0
+	local vlen = 0
+	local ColourAmount = 0
+	for k, v in pairs(colour_names) do
+		ColourAmount = ColourAmount + 1
+		if string.len(k) > klen then klen = string.len(k) end
+		if string.len(v) > vlen then vlen = string.len(v) end
+	end
+	
+	Note("ColoursRGB = {")
+	
+	for k, v in pairs(colour_names) do
+		Note("[\""..k.."\"] = {"..ColourNameToRGB(k).."},")
+	end
+	Note("}")
+end -- ListColours
+
+
+function fade_RGB(colour1, colour2, percentage)
+	r1, g1, b1 = string.match(colour1, "#([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])")
+	r2, g2, b2 = string.match(colour2, "#([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])")
+	
+	r3 = tonumber(r1, 16)*(100-percentage)/100.0 + tonumber(r2, 16)*(percentage)/100.0
+    g3 = tonumber(g1, 16)*(100-percentage)/100.0 + tonumber(g2, 16)*(percentage)/100.0
+    b3 = tonumber(b1, 16)*(100-percentage)/100.0 + tonumber(b2, 16)*(percentage)/100.0
+	local Result = "#"..Dec2Hex(r3).. Dec2Hex(g3)..Dec2Hex(b3)
+	return "#"..Dec2Hex(r3).. Dec2Hex(g3)..Dec2Hex(b3)
+end
+
+--------------------------------------------------------------------------------
+--   MATH FUNCTIONS
+--------------------------------------------------------------------------------
+function Dec2Hex(nValue)
+	if type(nValue) == "string" then
+		nValue = String.ToNumber(nValue);
+	end
+	nHexVal = string.format("%X", nValue);  -- %X returns uppercase hex, %x gives lowercase letters
+	sHexVal = nHexVal.."";
+	if nValue < 16 then
+		return "0"..tostring(sHexVal)
+	else
+		return sHexVal
+	end
+end
+
+--Two colour fade, unused
+function CreateColourFade(arg, colour1, colour2)
+	--Error checking that all arguments are the way we want them, possibly remove in future if there is no ability to do this manually
+	if arg == nil or arg == "" then
+		Note("Error, no input string.")
+		return
+	end
+	if colour1 == nil or ColourNameToRGB(colour1) == -1 then
+		Note("Error, invalid colour1 entry.")
+		return
+	end
+	if colour2 == nil or ColourNameToRGB(colour2) == -1 then
+		Note("Error, invalid colour2 entry.")
+		return
+	end
+	
+	local colour1 = ColourNameToRGBHex(colour1)
+	local colour2 = ColourNameToRGBHex(colour2)
+	local iReps = string.len(arg) -1
+	local Results = {}
+	local iTimes = 0
+	for sLetter in string.gmatch(arg, ".") do
+		if iTimes == 0 then
+			iPercentToChange = 0
+			table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+		else
+			iPercentToChange = (100/iReps)*iTimes
+			table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+		end
+		iTimes = iTimes + 1
+	end
+	return Results
+end
+	
+function CreateMultiColourFade(arg)
+	--Error checking that all arguments are the way we want them, possibly remove in future if there is no ability to do this manually
+	if arg == nil or arg == "" then
+		Note("Error, no input string.")
+		return
+	end
+
+	if #tColours > string.len(arg) then
+		Note("Error, more colours then characters in string.")
+		return
+	end
+	--Number of reps we will need
+	iNumberOfFades = #tColours - 1
+	--Lenght of the string to fade each time
+	iLength = math.floor(string.len(arg) / iNumberOfFades)
+
+	--Lets check if it divided evenly as we will need to make up for it at the end
+	local iRemainder = 0
+	if iLength * iNumberOfFades ~= string.len(arg) then
+		iRemainder = string.len(arg) - (iLength * iNumberOfFades)
+	end
+
+	local Results = {}
+	local iRemaindersUsed = 0
+	for i, v in ipairs (tColours) do
+		local colour1 = ColourNameToRGBHex(tColours[i])
+
+		if tColours[i+1] ~= nil then
+			local colour2 = ColourNameToRGBHex(tColours[i+1])
+			
+			local sString = string.sub(arg, 1 + iRemaindersUsed + ((i - 1) * iLength), i * iLength + iRemaindersUsed)
+			if iRemainder >= 1 then
+				sString = string.sub(arg, 1 + ((i - 1) * iLength) + iRemaindersUsed, (i * iLength) + 1 + iRemaindersUsed)
+				iRemainder = iRemainder - 1
+				iRemaindersUsed = iRemaindersUsed + 1
+			end
+			local iReps = string.len(sString) -1
+			local iTimes = 0
+			
+			for sLetter in string.gmatch(sString, ".") do
+
+				if iTimes == 0 then
+					iPercentToChange = 0
+					table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+				else
+					iPercentToChange = (100/iReps)*iTimes
+					table.insert(Results, {sLetter, fade_RGB(colour1, colour2, iPercentToChange)})
+				end
+				iTimes = iTimes + 1
+			end
+		end
+	end
+	return Results
+end
+
+--set title to <text>
+function DisplayResults(Results)
+	Note("")
+	local sForClipboard = ""
+	ColourTell("palegreen", "", "You're HEX colour fade result for \"")
+	for i, v in ipairs(Results) do
+		ColourTell(v[2], "", v[1])
+	end
+	ColourNote("palegreen", "", "\" is:")
+	for i, v in ipairs(Results) do
+		if bDoubleTags == false then
+			ColourTell("white", "", "%^" .. v[2] .. "%^".. v[1])
+			sForClipboard = sForClipboard .. "%^" .. v[2] .. "%^".. v[1]
+		else
+			ColourTell("white", "", "%%^^" .. v[2] .. "%%^^".. v[1])
+			sForClipboard = sForClipboard .. "%%^^" .. v[2] .. "%%^^".. v[1]
+		end
+	end
+	Note("")
+
+	--Copy to clipboard as well
+	ColourNote("palegreen", "", "Result copied to clipboard. (CTRL+ALT+P to paste)")
+	SetClipboard(sForClipboard)
+
+	if #Results > 20 then
+		ColourNote("palegreen", "", "NOTE: This contains more than the 20 characters limit for a title changer.")
+	end
+
+	Note("")
+end
+
+--Lets get some results
+FadeResults = CreateMultiColourFade(sCurText)
+
+
+-------MINIWINDOWSTUFF----------
+--MINIWINDOW STUFF
+winThemeData = {
+  WINDOW_BACKGROUND = ColourNameToRGB ("#000000"), -- for miniwindow body
+  WINDOW_BORDER = ColourNameToRGB("#E8E8E8"), -- for miniwindow body
+  HIGHLIGHT=ColourNameToRGB("#FFFFFF"), -- for 3D surfaces
+  FACE=ColourNameToRGB("#D4D0C8"), -- for 3D surfaces
+  INNERSHADOW=ColourNameToRGB("#808080"), -- for 3D surfaces
+  OUTERSHADOW = ColourNameToRGB("#404040"), -- for 3D surfaces
+  BACK_FACE = ColourNameToRGB ("#E8E8E8"), -- for contrasting details
+  DETAIL = ColourNameToRGB ("#000000"), -- for contrasting details
+  TITLE_HEIGHT = 17, -- for miniwindow title area
+  SUBTITLE_HEIGHT = 17, -- for miniwindow title area
+  TITLE_FONT_NAME = "Calibri", -- for miniwindow title area
+  TITLE_FONT_SIZE = 8 -- for miniwindow title area
+}
+
+
+-- Replacement for WindowRectOp action 5, which allows for a 3D look while maintaining color winThemeData
+-- Requires global winThemeData.HIGHLIGHT, winThemeData.FACE, winThemeData.INNERSHADOW, and winThemeData.OUTERSHADOW rgb colors to be set.
+function DrawThemed3DRect(winThisWindow, left, top, right, bottom)
+  right = right + 1
+  WindowRectOp(winThisWindow, miniwin.rect_fill, left, top, right, bottom, winThemeData.FACE)
+  WindowLine(winThisWindow, left, top, right, top, winThemeData.HIGHLIGHT, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, left, top, left, bottom, winThemeData.HIGHLIGHT, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, left, bottom-2, right, bottom-2, winThemeData.INNERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, right-2, top, right-2, bottom-2, winThemeData.INNERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, left, bottom-1, right, bottom-1, winThemeData.OUTERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, right-1, top, right-1, bottom-1, winThemeData.OUTERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)    
+end
+
+function DrawThemed3DRect2(winThisWindow, left, top, right, bottom)
+  right = right + 1
+  WindowRectOp(winThisWindow, miniwin.rect_fill, left, top, right, bottom, ColourNameToRGB("gray"))
+  WindowLine(winThisWindow, left, top, right, top, winThemeData.INNERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, left, top, left, bottom, winThemeData.INNERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, left, bottom-2, right, bottom-2, winThemeData.INNERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, right-2, top, right-2, bottom-2, winThemeData.INNERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, left, bottom-1, right, bottom-1, winThemeData.OUTERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+  WindowLine(winThisWindow, right-1, top, right-1, bottom-1, winThemeData.OUTERSHADOW, miniwin.pen_solid + miniwin.pen_endcap_flat, 1)    
+end
+
+--------------------------------------------------------------------------------
+--   MAIN WINDOW
+--------------------------------------------------------------------------------
+function update_window()
+
+	WindowRectOp (win, miniwin.rect_fill, 0, 0, window_width, window_height, ColourNameToRGB("black"))
+    
+	WindowRectOp(win, miniwin.rect_frame, 0, 0, window_width-window_outer_padding, window_height-window_outer_padding, ColourNameToRGB("silver"), ColourNameToRGB("black"))
+
+	local iLine = 1
+	local sText = "HEX Colour Fade"
+	local iFWidth = WindowTextWidth (win, "f", sText)	
+	local iIndent = (window_width-iFWidth)/2
+	DrawThemed3DRect(win, 0, 0, window_width, window_inner_padding + font_height + line_spacing)
+	WindowText (win, "f", sText, iIndent, line_spacing, 0, 0,	ColourNameToRGB("black"), false) -- not Unicode
+
+	WindowAddHotspot(win, "header", 0, 0, window_width, window_inner_padding + font_height + line_spacing,   --rectangle
+                 "",   -- MouseOver
+                 "",   -- CancelMouseOver
+                 "mousedown",
+                 "cancelmousedown", 
+                 "mouseup", 
+                 "Click to drag.",  -- tooltip text
+                 miniwin.cursor_hand, 0)  -- hand cursor
+	WindowDragHandler(win, "header", "dragmove", "dragrelease", 0) 
+
+	local iLine = iLine + 1
+	local sText = "Colour " .. iLine - 1 .. ":"
+	WindowText (win, "f", sText, window_inner_padding, window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+	WindowRectOp (win, miniwin.rect_fill, window_inner_padding + WindowTextWidth(win, "f", sText),
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1) + 1),
+		window_width - window_inner_padding,
+		window_inner_padding + ((font_height + line_spacing) * iLine) - 1,
+		ColourNameToRGB(tColours[iLine - 1])) 
+	local iFWidth = WindowTextWidth (win, "f", tColours[iLine - 1])	
+	local iIndent = (window_width - (window_inner_padding * 2) - WindowTextWidth(win, "f", sText) - iFWidth)/2
+	WindowText (win, "f", tColours[iLine - 1], window_inner_padding + WindowTextWidth(win, "f", sText) + iIndent, 
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("black"), false) -- not Unicode
+
+	WindowAddHotspot(win, sText,  -- for colour name text
+		window_inner_padding + WindowTextWidth(win, "f", sText), --top
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1) + 1), --left
+		window_width - window_inner_padding, --right
+		window_inner_padding + ((font_height + line_spacing) * iLine) - 1, -- bottom, result = rectangle
+            "",   -- MouseOver
+            "",   -- CancelMouseOver
+            "mousedown",
+            "cancelmousedown", 
+            "mouseup", 
+            "Click to select colour, right-click for more options",  -- tooltip text
+			miniwin.cursor_hand, 0)  -- hand cursor
+
+	local iLine = iLine + 1
+	local sText = "Colour " .. iLine - 1 .. ":"
+	WindowText (win, "f", sText, window_inner_padding, window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+	WindowRectOp (win, miniwin.rect_fill, window_inner_padding + WindowTextWidth(win, "f", sText),
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1)) + 1,
+		window_width - window_inner_padding,
+		window_inner_padding + ((font_height + line_spacing) * iLine) - 1,
+		ColourNameToRGB(tColours[iLine - 1])) 
+	local iFWidth = WindowTextWidth (win, "f", tColours[iLine - 1])	
+	local iIndent = (window_width - (window_inner_padding * 2) - WindowTextWidth(win, "f", sText) - iFWidth)/2
+	WindowText (win, "f", tColours[iLine - 1], window_inner_padding + WindowTextWidth(win, "f", sText) + iIndent, 
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("black"), false) -- not Unicode
+
+	WindowAddHotspot(win, sText,  -- for colour name text
+		window_inner_padding + WindowTextWidth(win, "f", sText), --top
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1) + 1), --left
+		window_width - window_inner_padding, --right
+		window_inner_padding + ((font_height + line_spacing) * iLine) - 1, -- bottom, result = rectangle
+            "",   -- MouseOver
+            "",   -- CancelMouseOver
+            "mousedown",
+            "cancelmousedown", 
+            "mouseup", 
+            "Click to select colour, right-click for more options",  -- tooltip text
+			miniwin.cursor_hand, 0)  -- hand cursor
+
+	local iLine = iLine + 1
+	local sText = "Colour " .. iLine - 1 .. ":"
+	WindowText (win, "f", sText, window_inner_padding, window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+	if tColours[iLine - 1] then
+		WindowRectOp (win, miniwin.rect_fill, window_inner_padding + WindowTextWidth(win, "f", sText),
+			window_inner_padding + ((font_height + line_spacing) * (iLine - 1)) + 1,
+			window_width - window_inner_padding,
+			window_inner_padding + ((font_height + line_spacing) * iLine) - 1,
+			ColourNameToRGB(tColours[iLine - 1])) 
+		local iFWidth = WindowTextWidth (win, "f", tColours[iLine - 1])	
+		local iIndent = (window_width - (window_inner_padding * 2) - WindowTextWidth(win, "f", sText) - iFWidth)/2
+		WindowText (win, "f", tColours[iLine - 1], window_inner_padding + WindowTextWidth(win, "f", sText) + iIndent, 
+			window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("black"), false) -- not Unicode
+	else
+		local iFWidth = WindowTextWidth (win, "f", "none")	
+		local iIndent = (window_width - (window_inner_padding * 2) - WindowTextWidth(win, "f", sText) - iFWidth)/2
+		WindowText (win, "f", "none", window_inner_padding + WindowTextWidth(win, "f", sText) + iIndent, 
+			window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+	end
+
+	WindowAddHotspot(win, sText,  -- for colour name text
+		window_inner_padding + WindowTextWidth(win, "f", sText), --top
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1) + 1), --left
+		window_width - window_inner_padding, --right
+		window_inner_padding + ((font_height + line_spacing) * iLine) - 1, -- bottom, result = rectangle
+            "",   -- MouseOver
+            "",   -- CancelMouseOver
+            "mousedown",
+            "cancelmousedown", 
+            "mouseup", 
+            "Click to select colour, right-click for more options",  -- tooltip text
+			miniwin.cursor_hand, 0)  -- hand cursor
+
+	local iLine = iLine + 1
+	local sText = "Colour " .. iLine - 1 .. ":"
+	WindowText (win, "f", sText, window_inner_padding, window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+	if tColours[iLine - 1] then
+		WindowRectOp (win, miniwin.rect_fill, window_inner_padding + WindowTextWidth(win, "f", sText),
+			window_inner_padding + ((font_height + line_spacing) * (iLine - 1)) + 1,
+			window_width - window_inner_padding,
+			window_inner_padding + ((font_height + line_spacing) * iLine) - 1,
+			ColourNameToRGB(tColours[iLine - 1])) 
+		local iFWidth = WindowTextWidth (win, "f", tColours[iLine - 1])	
+		local iIndent = (window_width - (window_inner_padding * 2) - WindowTextWidth(win, "f", sText) - iFWidth)/2
+		WindowText (win, "f", tColours[iLine - 1], window_inner_padding + WindowTextWidth(win, "f", sText) + iIndent, 
+			window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("black"), false) -- not Unicode
+	else
+		local iFWidth = WindowTextWidth (win, "f", "none")	
+		local iIndent = (window_width - (window_inner_padding * 2) - WindowTextWidth(win, "f", sText) - iFWidth)/2
+		WindowText (win, "f", "none", window_inner_padding + WindowTextWidth(win, "f", sText) + iIndent, 
+			window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+	end
+
+	WindowAddHotspot(win, sText,  -- for colour name text
+		window_inner_padding + WindowTextWidth(win, "f", sText), --top
+		window_inner_padding + ((font_height + line_spacing) * (iLine - 1) + 1), --left
+		window_width - window_inner_padding, --right
+		window_inner_padding + ((font_height + line_spacing) * iLine) - 1, -- bottom, result = rectangle
+            "",   -- MouseOver
+            "",   -- CancelMouseOver
+            "mousedown",
+            "cancelmousedown", 
+            "mouseup", 
+            "Click to select colour, right-click for more options",  -- tooltip text
+			miniwin.cursor_hand, 0)  -- hand cursor
+
+	local iLine = iLine + 1
+	local sText = tColours[1]
+	local sText = "\""..sCurText.."\""
+	if string.len(sCurText) > 20 then
+		sText = "\""..string.sub(sCurText, 1, 17) .."...\""
+	end
+	local iFWidth = WindowTextWidth (win, "f", sText)	
+	local iIndent = (window_width-iFWidth)/2
+	if not FadeResults then
+		WindowText (win, "f", sText, iIndent, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+	else
+		local prev_text_width = 0
+		WindowText (win, "f", "\"", iIndent + prev_text_width, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode
+		prev_text_width = prev_text_width + WindowTextWidth (win, "f", "\"")
+		for i, v in ipairs (FadeResults) do
+			--Window only fits 20 characters
+			if i > 20 then
+				break
+			end
+			local sCurLetter = v[1]
+			local sCurColour = v[2]
+			if #FadeResults > 20 and i >= 18 then
+				sCurLetter = "."
+				sCurColour = "silver"
+			end
+			WindowText (win, "f", sCurLetter, iIndent + prev_text_width, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB(sCurColour), false) -- not Unicode
+			prev_text_width = prev_text_width + WindowTextWidth (win, "f", v[1])
+		end
+		WindowText (win, "f", "\"", iIndent + prev_text_width, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("silver"), false) -- not Unicode			
+	end
+	
+    WindowRectOp(win, miniwin.rect_frame, window_inner_padding, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)),
+		window_width-window_inner_padding, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine)), ColourNameToRGB("silver"), ColourNameToRGB("black"))
+
+	
+	WindowAddHotspot(win, "text",  
+		window_inner_padding, --left
+		1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), --top
+		window_width-window_inner_padding, --right
+		1 + window_inner_padding + ((font_height + line_spacing) * (iLine)), -- bottom, result = rectangle
+            "",   -- MouseOver
+            "",   -- CancelMouseOver
+            "mousedown",
+            "cancelmousedown", 
+            "mouseup", 
+            "Click to change text",  -- tooltip text
+			miniwin.cursor_hand, 0)  -- hand cursor
+
+	local iLine = iLine + 1
+	local sText = "Generate!"
+	local iFWidth = WindowTextWidth (win, "f", sText)	
+	local iIndent = (window_width-iFWidth)/2
+	DrawThemed3DRect(win, iIndent - 2, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)),
+		iIndent + 2 + WindowTextWidth(win,"f", sText), 1 + window_inner_padding + ((font_height + line_spacing) * (iLine)))
+	WindowText (win, "f", sText, iIndent, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("black"), false) -- not Unicode
+	
+	WindowAddHotspot(win, "generate",  
+		iIndent - 2, --left
+		1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), --top
+		window_width - iIndent + 2, --right
+		1 + window_inner_padding + ((font_height + line_spacing) * (iLine)), -- bottom, result = rectangle
+            "",   -- MouseOver
+            "",   -- CancelMouseOver
+            "mousedown",
+            "cancelmousedown", 
+            "mouseup", 
+            "",  -- tooltip text
+			miniwin.cursor_hand, 0)  -- hand cursor
+			
+    Repaint()
+end
+
+--------------------------------------------------------------------------------
+--   DRAG AND HOTSPOT HANDLERS
+--------------------------------------------------------------------------------
+mouse_over = false
+function mouseover(flags, hotspot_id)
+end
+
+function cancelmouseover(flags, hotspot_id)
+end
+
+function mousedown(flags, hotspot_id)
+
+	if hotspot_id == "header" then
+		startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
+	elseif hotspot_id == "generate" then
+		local iLine = 7
+		local sText = "Generate!"
+		local iFWidth = WindowTextWidth (win, "f", sText)	
+		local iIndent = (window_width-iFWidth)/2
+		DrawThemed3DRect2(win, iIndent - 2, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)),
+			iIndent + 2 + WindowTextWidth(win,"f", sText), 1 + window_inner_padding + ((font_height + line_spacing) * (iLine)))
+		WindowText (win, "f", sText, iIndent, 1 + window_inner_padding + ((font_height + line_spacing) * (iLine - 1)), 0, 0,	ColourNameToRGB("black"), false) -- not Unicode
+	end
+end -- mousedown
+
+function cancelmousedown(flags, hotspot_id)
+end -- cancelmousedown
+
+function mouseup(flags, hotspot_id)
+
+	if hotspot_id == "Colour 1:" or hotspot_id == "Colour 2:" or hotspot_id == "Colour 3:" or hotspot_id == "Colour 4:" then
+		local iColourNumber = tonumber(string.sub(hotspot_id, -2, -2))
+		if flags == miniwin.hotspot_got_rh_mouse then
+
+			local function check(t, i)
+				t[i] = "+"..t[i]
+			end
+
+			local function disable(t, i)
+				t[i] = "^"..t[i]
+			end
+
+			local menu_strings = {
+				"Remove",
+				"Add Colour",
+				"Manually Enter Colour",
+				"Select Colour",
+				">Tag",
+				"%^",
+				"%%^^",
+				"<",
+			}
+
+			--Require at least 2 colours
+			if #tColours <= 2 then
+				disable(menu_strings, 1)
+			end
+			if #tColours >= 4 then
+				disable(menu_strings, 2)
+			end
+			if tColours[iColourNumber-1] == nil then
+				disable(menu_strings, 2)
+				disable(menu_strings, 3)
+				disable(menu_strings, 4)
+			end
+			if bDoubleTags == false then
+				disable(menu_strings, 6)
+				check(menu_strings, 6)
+			else
+				disable(menu_strings, 7)
+				check(menu_strings, 7)
+			end
+			
+			local menu_text = table.concat(menu_strings, "|")
+			--Note("Menu Text = " .. menu_text)
+
+			result = WindowMenu (win, 
+			WindowInfo (win, 14),  -- x
+			WindowInfo (win, 15),   -- y
+			menu_text)
+
+			if result == "Remove" then
+				if #tColours >= 3 then
+					Note("Colour " .. iColourNumber .. " '" ..tColours[iColourNumber].."' removed.")
+					table.remove(tColours, iColourNumber)
+					FadeResults = CreateMultiColourFade(sCurText)
+					update_window()
+				else
+					Note("You must have at least 3 colours, add one before removing.")
+				end
+			elseif result == "Add Colour" then
+				iNewColour = PickColour(ColourNameToRGB(tColours[iColourNumber] or "") )
+				if iNewColour ~= -1 then
+					if #tColours < 4 then
+						table.insert(tColours, iColourNumber, RGBColourToName(iNewColour))
+						FadeResults = CreateMultiColourFade(sCurText)
+						update_window()
+					else
+						Note("Cannot add more than four colours.")
+					end
+				else
+					if tColours[iColourNumber] then
+						Note("Colour unchanged from '" .. tColours[iColourNumber] .. "'.")
+					else
+						Note("Colour unchanged from 'none'.")
+					end
+				end
+			elseif result == "Manually Enter Colour" then
+				sNewColour = utils.inputbox("Type a valid MUSHclient colour name (ctrl + alt + p) or HEX colour value starting with a '#' sign.", "Change Colour", tColours[iColourNumber] or "", "", 12 )
+				if sNewColour == nil then
+					Note("Colour unchanged from '" .. tColours[iColourNumber] or "none" .. "'.")
+				elseif ColourNameToRGB(sNewColour) ~= -1 then
+					if tColours[iColourNumber-1] == nil then
+						tColours[iColourNumber-1] = sNewColour
+					else 
+						tColours[iColourNumber] = sNewColour
+					end
+					FadeResults = CreateMultiColourFade(sCurText)
+					update_window()
+				elseif sNewColour == "none" then
+					if not tColours[iColourNumber] then
+						Note("Colour unchanged from 'none'.")
+					elseif #tColours >= 3 then
+						Note("Colour " .. iColourNumber .. " '" ..tColours[iColourNumber].."' removed.")
+						table.remove(tColours, iColourNumber)
+						FadeResults = CreateMultiColourFade(sCurText)
+						update_window()
+					else
+						Note("You must have at least 3 colours, add another one before removing.")
+					end
+				else
+					Note("Invalid colour, you must enter either a colour name or a valid HEX colour value starting with a '#' sign, 'none' to clear.")
+				end
+			elseif result == "Select Colour" then
+				iNewColour = PickColour(ColourNameToRGB(tColours[iColourNumber] or ""))
+				if iNewColour ~= -1 then
+					if tColours[iColourNumber-1] == nil then
+						tColours[iColourNumber-1] = RGBColourToName(iNewColour)
+					else 
+						tColours[iColourNumber] = RGBColourToName(iNewColour)
+					end
+					FadeResults = CreateMultiColourFade(sCurText)
+					update_window()
+				else
+					if tColours[iColourNumber] then
+						Note("Colour unchanged from '" .. tColours[iColourNumber] .. "'.")
+					else
+						Note("Colour unchanged from 'none'.")
+					end
+				end
+			elseif result == "%^" then
+				Note("Now using '%^' colour tags.")
+				bDoubleTags = false
+			elseif result == "%%^^" then
+				Note("Now using '%%^^' colour tags.")
+				bDoubleTags = true
+			end
+		else
+			iNewColour = PickColour(ColourNameToRGB(tColours[iColourNumber] or ""))
+			if (iNewColour ~= -1) then
+				if tColours[iColourNumber-1] == nil then
+					tColours[iColourNumber-1] = RGBColourToName(iNewColour)
+				else 
+					tColours[iColourNumber] = RGBColourToName(iNewColour)
+				end
+				FadeResults = CreateMultiColourFade(sCurText)
+				update_window()
+			else
+				if tColours[iColourNumber] then
+					Note("Colour unchanged from '" .. tColours[iColourNumber] .. "'.")
+				else
+					Note("Colour unchanged from 'none'.")
+				end
+			end
+		end
+	elseif hotspot_id == "text"  then
+		sNewText = utils.inputbox("Type the text you want to fade. (Note: Titles changers can only be up to 20 characters)", "Change Text", sCurText or "", "", 12 )
+		if sNewText == nil or sNewText == sCurText then
+			Note("Text unchanged from '" .. sCurText .. "'.")
+		elseif string.len(sNewText) < #tColours then 
+			Note("Text must have more characters then number of colours to fade. (" .. #tColours.. ")")
+		else
+			sCurText = sNewText
+			FadeResults = CreateMultiColourFade(sCurText)
+			update_window()
+		end
+	elseif hotspot_id == "generate" then
+		if FadeResults then
+			DisplayResults(FadeResults)
+		else
+			Note("Error, no fade found to display.")
+		end
+		update_window()
+	end
+end -- mouseup
+
+function dragmove(flags, hotspot_id)
+	if hotspot_id == "header" then
+		local posx, posy = WindowInfo (win, 17), WindowInfo (win, 18)
+		-- move the window to the new location
+		WindowPosition(win, posx - startx, posy - starty, 0, 2)
+
+		-- change the mouse cursor shape appropriately
+		if posx < 0 or posx > GetInfo (281) or
+		posy < 0 or posy > GetInfo (280) then
+			check (SetCursor ( 11))   -- X cursor
+		else
+			check (SetCursor ( 1))   -- hand cursor
+		end -- if
+	end
+end -- dragmove
+
+function dragrelease(flags, hotspot_id)
+end -- dragrelease
+
+function OnPluginInstall ()
+end
+
+function OnPluginEnable ()
+	WindowShow (win,  true)
+end
+
+function OnPluginDisable()
+	WindowShow (win,  false)
+end
+
+function OnPluginClose ()
+	WindowShow (win,  false)
+end
+
+function OnPluginSaveState ()
+
+	SetVariable("tColours", json.encode(tColours))
+	SetVariable ("sCurText", sCurText)
+	SetVariable ("bDoubleTags", tostring(bDoubleTags))	
+	SetVariable ("window_pos_x", WindowInfo (win, 10))
+	SetVariable ("window_pos_y", WindowInfo (win, 11))
+ 
+end -- function OnPluginSaveState
+
+--------------------------------------------------------------------------------
+--   START EXECUTION HERE
+--------------------------------------------------------------------------------
+
+win = "HexColourFade" .. GetPluginID ()
+WindowCreate (win, 0, 0, 0, 0, miniwin.pos_center_all, 0, ColourNameToRGB("black")) -- we must load the window before we can load fonts
+	
+font_size = 12
+WindowFont (win, "f", "Consolas", font_size, false, false, false, false)
+
+font_height = WindowFontInfo (win, "f", 1)
+
+
+window_text_width = WindowTextWidth (win, "f", "\"00000000000000000000\"")
+window_inner_padding = 5
+window_outer_padding = 0
+window_width = window_text_width+(window_inner_padding*2)+(window_outer_padding*2)
+
+miniwindow_lines = 1 + 1 + (iNumberOfColours) + 1
+window_header_height = 1
+line_spacing = 2
+window_height = (((line_spacing+font_height)*(miniwindow_lines))-line_spacing)+(window_inner_padding*2)+(window_outer_padding*2)+window_header_height
+window_border = 2
+
+window_pos_x = tonumber(GetVariable("window_pos_x"))
+window_pos_y = tonumber(GetVariable("window_pos_y"))
+WindowCreate (win, 0, 0, window_width, window_height, miniwin.pos_center_all, 0, ColourNameToRGB("black"))
+if (type(window_pos_x) == "number") and (type(window_pos_x) == "number") then
+	WindowPosition(win, window_pos_x, window_pos_y, 0, 2)
+end
+WindowShow (win,  true)
+update_window()
+]]>
+</script> 
+<!--  Triggers  -->
+<triggers> 
+</triggers>
+  
+</muclient>

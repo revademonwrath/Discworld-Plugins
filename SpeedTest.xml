@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- SpeedTest by Reva, now in milliseconds (note it is slightly innacurate)! -->
+<!-- Match start line to time to 'StartTiming' trigger at end of file. -->
+<!-- Match end line to 'EndTiming' trigger at end of file. -->
+
+<muclient>
+<script>
+<![CDATA[
+
+require "json"
+
+--Set to true to save over installs, will create a long list
+bSaving = false
+if GetVariable("bSaving") == "true" then
+	bSaving = true
+end
+--Number of results to save
+iResults = 1000
+	
+--Might not be necessary anymore
+IsTiming = false
+
+sTextColour = "limegreen"
+sFastestTimeColour = "yellow"
+sSlowestTimeColour = "red"
+
+--Record start time
+function StartTiming (sName, sLine, wildcards, styles)
+		ThisStartTime = GetInfo(232)
+		--Rounded to the 2nd decimal place
+		DisplayStartTime = string.match(math.floor((ThisStartTime * 100) +0.5)/ 10000, "%.%d%d%d?%d?") * 100
+		--DisplayStartTime = string.match(GetInfo(232), "(%d?%d%.%d?%d?)") or 0
+		--DisplayStartTime = 
+		if DisplayStartTime == 0 then
+			ColourNote(sTextColour, "black", "Failed to capture start time, cancelling. (" .. GetInfo(232) .. ")")
+			return
+		end
+		IsTiming = true
+		ColourTell("white", "black", "[")
+		ColourTell(sTextColour, "black", "Start: " .. DisplayStartTime .. "s")
+		ColourTell("white", "black", "]")
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+	Note("")	
+	EnableTrigger("EndTime", true)
+end
+
+
+TimeRecord = {}
+if bSaving == true then
+	if (GetVariable("TimeRecord") ~= nil) then
+		TimeRecord = json.decode(GetVariable("TimeRecord"))
+	end
+end
+
+--Record end time after
+function EndTiming(sName, sLine, wildcards, styles)
+	if IsTiming == false then return end
+		ThisEndTime = GetInfo(232)
+		--Rounded to the 2nd decimal place
+		DisplayEndTime = string.match(math.floor((ThisEndTime * 100) +0.5)/ 10000, "%.%d%d%d?%d?") * 100
+		if DisplayEndTime == 0 then
+			ColourNote(sTextColour, "black", "Failed to capture end time, cancelling.. (" .. GetInfo(232) .. ")")
+			IsTiming = false
+			EnableTrigger("EndTime", false)
+			return
+		end
+		ColourTell("white", "black", "[")
+		ColourTell(sTextColour, "black", "End: " .. DisplayEndTime)
+		ColourTell("white", "black", "]")
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+	Note("")
+	if ThisStartTime ~= nil then
+		--Rounded to the 2nd decimal place
+		DisplayElapsedTime = string.match(math.floor(((ThisEndTime - ThisStartTime) * 100) + 0.5)/ 10000, "%.%d%d%d?%d?") * 100
+		if DisplayElapsedTime == 0 then
+			ColourNote(sTextColour, "black", "Failed to capture elapsed time, cancelling.. (" .. GetInfo(232) .. ")")
+			IsTiming = false
+			EnableTrigger("EndTime", false)
+			return
+		end
+		--Clear up results if there are too many
+		if #TimeRecord >= iResults then
+			table.remove(TimeRecord, 1)
+			Note("Removing oldest record as records exceed " .. iResults .. ".")
+		end
+		table.insert(TimeRecord, DisplayElapsedTime)
+		ColourTell("white", "black", "[")
+		ColourTell(sTextColour, "black", "Elapsed Time: " .. DisplayElapsedTime .. "s")
+		ColourNote("white", "black", "]")
+	end
+	IsTiming = false
+	EnableTrigger("EndTime", false)
+end
+
+require "json"
+function OnPluginSaveState ()
+	if bSaving == true then
+		SetVariable("TimeRecord", json.encode(TimeRecord))
+	end
+	SetVariable("bSaving", tostring(bSaving))
+end
+
+function DisplayTimes()
+	local iFastestTime = 0
+	local iSlowestTime = 0
+	if #TimeRecord >= 1 then
+		TotalTime = 0
+		local iIterations = 0
+		local iLength = 0
+		local iMaxLength = string.len(tostring(iResults).. ": 01.01s")
+
+
+		for i, v in ipairs (TimeRecord) do
+			if iSlowestTime == 0 or tonumber(v) > iSlowestTime then
+				iSlowestTime = tonumber(v)
+			end
+			if iFastestTime == 0 or tonumber(v) < iFastestTime then
+				iFastestTime = tonumber(v)
+			end
+			TotalTime = TotalTime + tonumber(v)
+		end
+		
+		for i, v in ipairs (TimeRecord) do
+			local sVarColour = sTextColour
+			if tonumber(v) == iSlowestTime then
+				sVarColour = sSlowestTimeColour
+			elseif tonumber(v) == iFastestTime then
+				sVarColour = sFastestTimeColour
+			end
+			iIterations = iIterations + 1
+			ColourTell(sVarColour, "black", i )
+			ColourTell("white", "black", ": ")
+			iLength = string.len(tostring(i .. ": " .. v .. "s"))
+			Tell(string.rep(" ",  iMaxLength - iLength))
+			ColourTell(sVarColour, "black", v .. "s")
+			if iIterations >= 10 then
+				Note("")
+				iIterations = 0
+			else
+				ColourTell("white", "black", "|")
+			end
+		end
+		if iIterations > 0 then Note("") end
+		ColourTell(sFastestTimeColour, "black", "Fastest time")
+		ColourTell("white", "black", ": ")
+		ColourNote(sFastestTimeColour, "black", iFastestTime .. "s")
+		ColourTell(sSlowestTimeColour, "black", "Slowest time")
+		ColourTell("white", "black", ": ")
+		ColourNote(sSlowestTimeColour, "black", iSlowestTime .. "s")
+		ColourTell("white", "black", "Average: ")
+		if #TimeRecord > 1 then
+			local iAverageTime = RoundToNthDecimal(TotalTime/#TimeRecord, 2)
+			ColourNote(sTextColour, "black", iAverageTime .. "s (" .. #TimeRecord .. " values)")
+		else
+			local iAverageTime = RoundToNthDecimal(TotalTime/#TimeRecord, 2)
+			ColourNote(sTextColour, "black", iAverageTime .. "s (" .. #TimeRecord .. " value)")
+		end
+	else
+		ColourNote(sTextColour, "black", "No recorded values available.")
+	end
+end
+
+--UNUSED
+function RoundToNthDecimal(num, n)
+  local mult = 10^(n or 0)
+  return math.floor(num * mult + 0.5) / mult
+end
+
+function ToggleSave(sName, sLine, wildcards)
+	local sToggle = string.sub(wildcards[1], 2) or ""
+	--Note(sToggle)
+	if sToggle == "off" then
+		if bSaving == false then
+			ColourNote(sTextColour, "black", "Saving is already off.")
+		else
+			ColourNote(sTextColour, "black", "Saving off.")
+			bSaving = false
+			
+		end
+	elseif sToggle == "on" then
+		if bSaving == false then
+			ColourNote(sTextColour, "black", "Saving on.")
+			bSaving = true
+		else
+			ColourNote(sTextColour, "black", "Saving is already on.")
+		end
+	else
+		if bSaving == false then
+			ColourNote(sTextColour, "black", "Saving on.")
+			bSaving = true
+		else
+			ColourNote(sTextColour, "black", "Saving off.")
+			bSaving = false
+		end
+	end
+end
+
+function OnPluginInstall()
+	DoAfterSpecial (0.5, 'SpeedTestWelcome()', sendto.script)
+end
+
+function SpeedTestWelcome()
+ColourNote(sTextColour, "",[[
+Thank you for installing SpeedTest v1.5 by Reva
+>< >< >< >< >< >< >< >< >< >< >< >< >< >< >< ><
+The plugin will add timestamps to the start line and end line and display time elapsed.  All time is in seconds\milliseconds, rounded to 2 digits and 2 decimal places. 
+To generate a list of previous data use 'st {time(s)\result(s)}'
+To remove saved results use 'st {remove\erase} <number>', or 'st remove' to remove last.
+To clear saved results use 'st {clear\reset}'.
+To save results use 'st save {on\off}', 'st save' to toggle on\off, NOTE: Only the last 1000 results will be saved.
+]])
+end
+
+
+]]>
+</script> 
+<!--  Triggers  -->
+<plugin
+   name="SpeedTest"
+   author="Reva"
+   id="aedddb334567643429c562c4"
+   language="Lua"
+   purpose="Test Time Elapsed"
+   date_written="2018-02-17"
+   date_modified="2018-06-29"
+   save_state="y"
+   requires="4.84"
+   version="1.5"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+    <alias
+     match="^st (time|result)s?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="DisplayTimes"
+    ></alias>
+    <alias
+     match="^st save( on| off)?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="ToggleSave"
+    ></alias>
+    <alias
+     match="^st (clear|reset)$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+	 send_to="12"
+  > 
+  <send>
+  ColourNote(sTextColour, "black", "Resetting saved times.")
+  TimeRecord = {}
+  </send>
+  </alias>
+    <alias
+     match="^st (?:remove|erase)(?: (\d+))?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+	 send_to="12"
+  > 
+  <send>
+	if "%1" == "" then
+		table.remove(TimeRecord, #TimeRecord)
+		ColourNote(sTextColour, "black", "Last recorded time (" .. #TimeRecord + 1 .. ") removed.")
+	else
+		if TimeRecord[tonumber("%1")] ~= nil then
+			table.remove(TimeRecord, "%1")
+			ColourNote(sTextColour, "black", "Recorded time (" .. "%1" .. ") removed.")
+		else
+			ColourNote(sTextColour, "black", "Number out of range. (1 - " .. #TimeRecord .. ")")
+		end	
+	end
+  </send>
+  </alias>
+</aliases>
+
+<triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?You prepare to cast Jogloran's Portal of Cheaper Travel on the .+\.$"
+   sequence="12"
+   omit_from_output="y"
+   script="StartTiming"
+   name="StartTime"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   omit_from_output="y"
+   keep_evaluating="y"
+   match="^(?:> )?(A .+ solidifies with a satisfying thump\.|The door dissolves into nothingness\.|The reality level in this location is too low\.)$"
+   regexp="y"
+   sequence="12"
+   script="EndTiming"
+   name="EndTime"
+   group="TimeStamp"
+  ></trigger>
+</triggers>
+
+</muclient>

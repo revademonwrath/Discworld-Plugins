@@ -1,0 +1,407 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- DamageList by Reva -->
+<!-- Grab damage output to a table and USE that data! -->
+
+<muclient>
+<script>
+<![CDATA[
+
+require "json"
+sTextColour = "limegreen"
+
+--Set to true to save over installs, will create a long list
+bSort = true
+if GetVariable("bSort") == "false" then
+	bSort = false
+end
+
+bIsRecording = false
+if GetVariable("bIsRecording") == "true" then
+	bIsRecording = true
+end
+	
+DamageRecord = {}
+if (GetVariable("DamageRecord") ~= nil) then
+	DamageRecord = json.decode(GetVariable("DamageRecord"))
+end
+
+function DLNote(sArg)
+	ColourTell("white", "", "[")
+	ColourTell(sTextColour, "", "DL")
+	ColourTell("white", "", "] ")
+	ColourNote(sTextColour, "", sArg)
+end
+
+
+--Record end time after
+function AddDamageRecord(sArg)
+	if bIsRecording == false then 
+		return 
+	end
+	
+	if tonumber(sArg) == nil then
+		--Note("sArg = " .. sArg .. ", returning.")
+		return
+	end
+	
+	sArg = tonumber(sArg)
+	
+	table.insert(DamageRecord, tonumber(sArg))
+
+	ColourTell("white", "", "[")
+	ColourTell(sTextColour, "", "Damage("..#DamageRecord.."): " .. sArg)
+	ColourNote("white", "", "]")
+	
+end
+
+--mxp function stolen from Quow's cowbar
+function OnPluginMXPsetEntity (sIn, bDelayUpdates)
+  local sValue, bRefreshVitals = utils.split(sIn, '='), false
+  -- Is this a stat we care about?
+    if (sValue[1] == "hp") then
+		--Note("sV = " .. sValue[1])
+		--tprint(sValue)
+		if iHP ~= nil then
+			iOldHP = iHP
+			iHP = tonumber(sValue[2])
+			local iHPDiff = iHP - iOldHP
+			if iHPDiff < 0 then
+				AddDamageRecord(math.abs(iHPDiff))
+			end
+		else
+			iHP = sValue[2]
+		end
+	end
+end
+
+function OnPluginSaveState ()
+	SetVariable("DamageRecord", json.encode(DamageRecord))
+	SetVariable("bSort", tostring(bSort))
+	SetVariable("bIsRecording", tostring(bIsRecording))
+	SetVariable("sFirstTime", sFirstTime)
+end
+
+function DisplayTable()
+
+	local iTotalDamage = 0
+	local iLongest = 1
+	for i, v in ipairs (DamageRecord) do
+		iTotalDamage = iTotalDamage + v
+		if string.len(tostring(v)) > iLongest then
+			iLongest = string.len(tostring(v))
+		end
+	end
+
+	--Note("HERE")
+	if #DamageRecord == 0 then
+		DLNote("No Damage Entries.")
+	elseif #DamageRecord == 1 then
+		ColourNote(sTextColour, "", #DamageRecord .. " Damage Entry: ")
+	else
+		ColourNote(sTextColour, "", #DamageRecord .. " Damage Entries: ")
+	end
+
+	local TempTable = DamageRecord
+	if bSort == true then
+	--Note("sorting...")
+		local sort_func = function( a,b ) return a < b end
+		table.sort( TempTable, sort_func )
+	end
+	
+	--table.concat(DamageRecord, ", ")
+	ColourTell(sTextColour, "", table.concat(DamageRecord, ", "))
+	--[[
+	for i, v in ipairs (TempTable) do
+		if i ~= 1 then
+			ColourTell(sTextColour, "", ", ")
+		end
+		ColourTell(sTextColour, "", string.rep(" ", iLongest - string.len(tostring(v)))..tostring(v))
+	end
+	]]--
+	ColourNote(sTextColour, "", ".")
+
+	ColourNote(sTextColour, "", "Average Damage: " ..RoundToNthDecimal(iTotalDamage/#DamageRecord, 2).."." )
+	local iThisMedian = GetMedian(DamageRecord)
+	ColourNote(sTextColour, "", "Median Damage: " ..iThisMedian.."." )
+	
+	--how much more to consider a crit and how much less glancing
+	local iCritDiff = 30
+	local iGlanDiff = 30
+	
+	local iCritCount = 0
+	local iGlanCount = 0
+	local iRegCount = 0
+	
+	local tCritTable = {}
+	local tGlanTable = {}
+	local tRegTable = {}
+	for i, v in ipairs (TempTable) do
+		if v > iThisMedian * ((100+iCritDiff)/100) then
+			--iCritCount = iCritCount + 1
+			table.insert(tCritTable, v)
+		elseif v < iThisMedian * ((100-iCritDiff)/100) then
+			--iGlanCount = iGlanCount + 1
+			table.insert(tGlanTable, v)
+		else
+			table.insert(tRegTable, v)
+		end
+	end
+	if #tCritTable ~= 0 then
+		ColourNote(sTextColour, "", #tCritTable .." Crit(s): " ..table.concat(tCritTable, ", ") .. " (Avg: " .. RoundToNthDecimal(Sum(tCritTable)/#tCritTable, 2)..").")
+	else
+		ColourNote(sTextColour, "", #tCritTable .." Crit(s).")
+	end
+	if #tRegTable ~= 0 then
+		ColourNote(sTextColour, "", #tRegTable .." Regular: " ..table.concat(tRegTable, ", ") .. " (Avg: " .. RoundToNthDecimal(Sum(tRegTable)/#tRegTable, 2)..").")
+	else
+		ColourNote(sTextColour, "", #tRegTable .." Regular.")
+	end
+	if #tGlanTable ~= 0 then
+		ColourNote(sTextColour, "", #tGlanTable .." Glancing: " ..table.concat(tGlanTable, ", ") .. " (Avg: " .. RoundToNthDecimal(Sum(tGlanTable)/#tGlanTable, 2)..").")
+	else
+		ColourNote(sTextColour, "", #tGlanTable .." Glancing.")
+	end
+end
+
+function Sum(t)
+    local sum = 0
+    for k,v in pairs(t) do
+        sum = sum + v
+    end
+
+    return sum
+end
+
+
+-- Get the median of a table. from: http://lua-users.org/wiki/SimpleStats
+function GetMedian( t )
+	local temp={}
+
+	-- deep copy table so that when we sort it, the original is unchanged
+	-- also weed out any non numbers
+	for k,v in pairs(t) do
+		if type(v) == 'number' then
+		table.insert( temp, v )
+		end
+	end
+
+	table.sort( temp )
+
+	-- If we have an even number of table elements or odd.
+	if math.fmod(#temp,2) == 0 then
+		-- return mean value of middle two elements
+		return ( temp[#temp/2] + temp[(#temp/2)+1] ) / 2
+	else
+		-- return middle element
+		return temp[math.ceil(#temp/2)]
+	end
+end
+
+function RoundToNthDecimal(num, n)
+  local mult = 10^(n or 0)
+  return math.floor(num * mult + 0.5) / mult
+end
+
+function ToggleSort(sName, sLine, wildcards)
+	local sToggle = string.sub(wildcards[1], 2) or ""
+	--Note(sToggle)
+	if sToggle == "off" then
+		if bSort == false then
+			DLNote("Sorting is already off.")
+		else
+			DLNote("Sorting off.")
+			bSort = false
+			
+		end
+	elseif sToggle == "on" then
+		if bSort == false then
+			DLNote("Sort on.")
+			bSort = true
+		else
+			DLNote("Sort is already on.")
+		end
+	else
+		if bSort == false then
+			DLNote("Sort on.")
+			bSort = true
+		else
+			DLNote("Sort off.")
+			bSort = false
+		end
+	end
+end
+
+function ToggleRecording(sName, sLine, wildcards)
+	local sToggle = string.sub(wildcards[1], 2) or ""
+	--Note(sToggle)
+	if sToggle == "off" then
+		if bIsRecording == false then
+			DLNote("Recording is already off.")
+		else
+			DLNote("Recording off.")
+			bIsRecording = false
+			
+		end
+	elseif sToggle == "on" then
+		if bIsRecording == false then
+			DLNote("Recording on.")
+			bIsRecording = true
+		else
+			DLNote("Recording is already on.")
+		end
+	else
+		if bIsRecording == false then
+			DLNote("Recording on.")
+			bIsRecording = true
+		else
+			DLNote("Recording off.")
+			bIsRecording = false
+		end
+	end
+end
+
+function OnPluginInstall()
+	sFirstTime = GetVariable("sFirstTime")
+	if sFirstTime ~= "version_" .. tostring(GetPluginInfo(GetPluginID(), 19)) then	
+		DoAfterSpecial (0.5, 'DamageListHelp()', sendto.script)
+	else
+	if bIsRecording == false then
+		DoAfterSpecial (0.5, 'DLNote("Recording is currently off, \'dl record on\' to turn it on.")', 12)
+		
+	else
+		DoAfterSpecial (0.5, 'DLNote("Recording is currently on, \'dl record off\' to turn it off.")', 12)
+	end
+	
+	end
+end
+
+function DamageListHelp()
+	ColourNote(sTextColour, "", "DamageLogger v"..GetPluginInfo (GetPluginID (), 19)..", by Reva")
+	ColourNote(sTextColour, "", "--------------"..string.rep("-", string.len(tostring(GetPluginInfo (GetPluginID (), 19)))).."---------")
+	if bIsRecording == false then
+		ColourNote(sTextColour, "", "Recording is currently off.")
+	else
+		ColourNote(sTextColour, "", "Recording is currently on.")
+	end
+	Note("")
+	ColourNote(sTextColour, "", "Commands:")
+	ColourNote(sTextColour, "", "'dl help' - this help message.")
+	ColourNote(sTextColour, "", "'dl record' - turn on or off recording, arguments are on\\off, or blank to toggle.")
+	ColourNote(sTextColour, "", "'dl list\\stats' - show list\\stats of recorded damage amounts.")
+	ColourNote(sTextColour, "", "'dl sort' - turn on or off sorting results, arguments are on\\off, or blank to toggle.")
+	ColourNote(sTextColour, "", "'dl remove' - remove a specific damage amount, argument is the number you wish to remove. NOTE: It will only remove the first instance.")
+	ColourNote(sTextColour, "", "'dl add' - add a specific damage amount, argument is the number you wish to add.")
+	ColourNote(sTextColour, "", "'dl clear\\reset' - reset\\clear the table of damage amounts.")
+end
+
+function SpeedTestWelcome()
+
+end
+
+
+]]>
+</script> 
+<plugin
+   name="DamageLogger"
+   author="Reva"
+   id="aedddb33bb47963cbdc562c4"
+   language="Lua"
+   purpose="Record Damage"
+   date_written="2021-04-08"
+   date_modified="2021-04-09"
+   save_state="y"
+   requires="4.84"
+   version="1"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+    <alias
+     match="^(?:damage ?log(?:ger)?|dl) help$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="DamageListHelp"
+    ></alias>
+    <alias
+     match="^(?:damage ?log(?:ger)?|dl) (list|result)s?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="DisplayTable"
+    ></alias>
+    <alias
+     match="^(?:damage ?log(?:ger)?|dl) sort( on| off)?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="ToggleSort"
+    ></alias>
+    <alias
+     match="^(?:damage ?log(?:ger)?|dl) record(?:ing)?( on| off)?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="ToggleRecording"
+    ></alias>
+    <alias
+     match="^(?:damage ?log(?:ger)?|dl) (clear|reset)$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+	 send_to="12"
+  > 
+  <send>
+  DLNote("Resetting damage table.")
+  DamageRecord = {}
+  </send>
+  </alias>
+    <alias
+     match="^(?:damage ?log(?:ger)?|dl) (?:remove|erase)(?: (-?\d+))?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+	 send_to="12"
+  > 
+  <send>
+	bFound = false
+	for i, v in ipairs (DamageRecord) do
+		if tostring(v) == tostring("%1") then
+			table.remove(DamageRecord, i)
+			bFound = true
+			break
+		end
+	end
+	if bFound == true then
+		DLNote("Damage '" .. "%1" .. "' removed.")
+	else
+		DLNote("Cannot Find Damage '" .. "%1" .. "', 'dl list' for a list of recorded damage amounts.")
+	end
+  </send>
+  </alias>
+    <alias
+     match="^(?:damage ?log(?:ger)?|dl) (?:add)(?: (\d+))?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+	 send_to="12"
+  > 
+  <send>
+	AddDamageRecord(tonumber("%1"))
+  </send>
+  </alias>
+</aliases>
+
+<triggers> 
+</triggers>
+
+</muclient>

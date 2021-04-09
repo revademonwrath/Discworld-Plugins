@@ -96,10 +96,11 @@ function DisplayTable()
 	--Note("HERE")
 	if #DamageRecord == 0 then
 		DLNote("No Damage Entries.")
+		return
 	elseif #DamageRecord == 1 then
-		ColourNote(sTextColour, "", #DamageRecord .. " Damage Entry: ")
+		ColourTell(sTextColour, "", #DamageRecord .. " Damage Entry: ")
 	else
-		ColourNote(sTextColour, "", #DamageRecord .. " Damage Entries: ")
+		ColourTell(sTextColour, "", #DamageRecord .. " Damage Entries: ")
 	end
 
 	local TempTable = DamageRecord

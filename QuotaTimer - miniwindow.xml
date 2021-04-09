@@ -1,0 +1,994 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- QuotaTimers by Reva -->
+<!-- Records quota info from reading license and creates timers. -->
+<!-- 'qt help' to display help info. -->
+<!-- 'quota' to display known quota info. -->
+<!-- 'quota reset' to reset all info and timers. -->
+<!-- 'qt miniwindow <on\off\reset>' to toggle miniwindow -->
+<!-- 'qt miniwindow <brief\verbose>' for brief info or verbose -->
+<!-- Change CheckQuotaAlias (line 24) from your alias for checking quota, or create a new alias using ';' for newline -->
+
+<muclient>
+<script>
+<![CDATA[
+
+--Set to colour for text warnings
+TextColour = "lime"
+BackgroundColour = "black"
+MininwindowBorderColour = "gray"
+
+--Set to check quota, change to your alias to check your quota
+--Example: CheckQuotaAlias = "get license from packs;read quota;put license in packs"
+CheckQuotaAlias = ""
+--Set true for debug messages
+Debug = false
+
+--If plugin should save Quota info and timers
+ToSave = true
+
+-- WARNING: DO NOT EDIT AFTER HERE UNLESS YOU KNOW WHAT YOU ARE DOING!!!
+
+myFlags = timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot
+
+Quota = {
+["status"] = "unknown",
+["time"] = "unknown",
+["hours"] = 0,
+["minutes"] = 0,
+["seconds"] = 0,
+["amount"] = "unknown",
+["amount_stolen"] = "unknown",
+["minimum"] = "unknown",
+["maximum"] = "unknown",
+["amount_paid"] = "unknown",
+["amount_lefttopay"] = "unknown",
+}
+--miniwindow = true
+
+CheckQuotaAlias = string.gsub (CheckQuotaAlias, ";", "\n")
+--------------------------------------------------------------------------------
+--   INSTALL AND SAVE
+--------------------------------------------------------------------------------
+require "serialize"  -- needed to serialize table to string
+
+--Changed to happen when entering to be more accurate
+function OnPluginInstall ()
+	if ToSave == true then
+		if Debug == true then Note("Loading plugin...") end
+		assert (loadstring (GetVariable ("Quota") or "")) ()
+		if Quota.status ~= "unknown" then
+			if Debug == true then Note("Restarting saved timers.") end
+			SetQuotaTimers(Quota.hours, Quota.minutes, Quota.seconds)
+		end
+	end
+	
+	--Loading miniwindow settings
+	Miniwindow = true
+	if (GetVariable("Miniwindow") == "false") then
+		Miniwindow = false
+	end
+	
+	--Loading miniwindow settings
+	BriefMiniwindow = true
+	if (GetVariable("BriefMiniwindow") == "false") then
+		BriefMiniwindow = false
+	end
+	
+	if Miniwindow == true then
+		ColourNote(TextColour, BackgroundColour, "Quota Timers Miniwindow:")
+		ColourNote(TextColour, BackgroundColour, "Click to drag in the top section of the miniwindow above the text - your mouse pointer should change to arrows.")
+		ColourNote(TextColour, BackgroundColour, "If you cannot find the miniwindow 'qt miniwindow reset' to reposition it to the middle of your screen.")
+	end
+	update_window()
+
+end -- function OnPluginInstall
+
+function OnPluginDisable()
+	WindowShow (win,  false)
+end
+
+function OnPluginClose ()
+	WindowShow (win,  false)
+end
+
+function OnPluginSaveState ()
+	if ToSave == true then
+		if Debug == true then Note("Saving Quota status...") end
+
+		--Update quota time
+		iSecondsToGo = "unknown"
+
+		if IsTimer("Quota12HourWarning") == 0 then
+			iSecondsToGo = tonumber(GetTimerInfo("Quota12HourWarning", 13))
+		elseif IsTimer("Quota1NewWarning") == 0 then
+			iSecondsToGo = tonumber(GetTimerInfo("Quota1NewWarning", 13))
+		end
+		
+		if iSecondsToGo ~= "unknown" then
+			iSeconds = iSecondsToGo
+			iHours = math.floor(iSeconds / 3600)
+			iMinutes  = math.floor((iSeconds - (iHours * 3600))/ 60)
+			iSeconds = math.floor(iSeconds - (iHours * 3600) - (iMinutes * 60))
+			Quota.hours, Quota.minutes, Quota.seconds = iHours, iMinutes, iSeconds
+			if Debug == true then 
+				Note("Changing Hr: " .. Quota.hours .. ", Min: " .. Quota.minutes .. ", Sec: " .. Quota.seconds .. ".")
+			end
+		end
+	
+		SetVariable ("Quota", "Quota = " .. serialize.save_simple (Quota))
+	    SetVariable("Miniwindow", tostring(Miniwindow))
+	    SetVariable("BriefMiniwindow", tostring(BriefMiniwindow))
+		SetVariable ("window_pos_x", WindowInfo (win, 10))
+		SetVariable ("window_pos_y", WindowInfo (win, 11))
+		
+
+		if Debug == true then Note("Saved.") end
+	end
+end -- function OnPluginSaveState
+
+function QTHelp (sName, sLine, wildcards)
+	Note("")
+	ColourNote(TextColour, BackgroundColour, "'qt help' - this help screen.")
+	ColourNote(TextColour, BackgroundColour, "'quota' to display known quota info.")
+	ColourNote(TextColour, BackgroundColour, "'quota reset' to reset all info and timers.")
+	ColourNote(TextColour, BackgroundColour, "'qt miniwindow <on\\off\\reset>' to toggle miniwindow.")
+	ColourNote(TextColour, BackgroundColour, "'qt miniwindow <brief\\verbose>' for brief info or verbose.")
+	Note("")
+end
+
+function EnableQuotaTriggers (sName, sLine, wildcards)
+	if Debug == true then Note("Enabling Triggers") end
+	EnableTrigger("EndQuotaLine", true )
+	EnableTrigger("QuotaStatusLine", true )
+	EnableTrigger("QuotaTimeLine", true )
+	EnableTrigger("QuotaEnableAmountStolen", true )
+	EnableTrigger("QuotaMinimumLine", true )
+	EnableTrigger("QuotaMaximumLine", true )
+	EnableTrigger("QuotaEnableAmountPaid", true )
+	EnableTrigger("QuotaEnableAmountLeftToPay", true )
+
+	ResetQuota()
+end
+
+function DisableQuotaTriggers (sName, sLine, wildcards)
+	if Debug == true then Note("Disabling Triggers") end
+	EnableTrigger("EndQuotaLine", false )
+	EnableTrigger("QuotaStatusLine", false )
+	EnableTrigger("QuotaTimeLine", false )
+	EnableTrigger("QuotaEnableAmountStolen", false )
+	EnableTrigger("QuotaMinimumLine", false )
+	EnableTrigger("QuotaMaximumLine", false )
+	EnableTrigger("QuotaEnableAmountPaid", false )
+	EnableTrigger("QuotaEnableAmountLeftToPay", false )
+	update_window()
+end
+
+function ResetQuota ()
+	if Debug == true then Note("Resetting Quota info") end
+	Quota = {
+		["status"] = "unknown",
+		["time"] = "unknown",
+		["hours"] = 0,
+		["minutes"] = 0,
+		["seconds"] = 0,
+		["amount"] = "unknown",
+		["amount_stolen"] = "unknown",
+		["minimum"] = "unknown",
+		["maximum"] = "unknown",
+		["amount_paid"] = "unknown",
+		["amount_lefttopay"] = "unknown",
+	}
+--Lets remove all previous timers to start:
+	if IsTimer("Quota1NewWarning") == 0 then
+		DeleteTimer ("Quota1NewWarning")
+	end
+	if IsTimer("Quota12HourWarning") == 0 then
+		DeleteTimer ("Quota112HourWarning")
+	end
+	if IsTimer("Quota1HourWarning") == 0 then
+		DeleteTimer ("Quota1HourWarning")
+	end
+	if IsTimer("Quota30MinutesWarning") == 0 then
+		DeleteTimer ("Quota30MinutesWarning")
+	end
+	if IsTimer("Quota15MinuteWarning") == 0 then
+		DeleteTimer ("Quota15MinuteWarning")
+	end
+	if IsTimer("Quota5MinuteWarning") == 0 then
+		DeleteTimer ("Quota5MinuteWarning")
+	end
+end
+
+QuotaMessages = {
+    ["You are on leave of absence\."] 																			  = { status = "leave of absence", },
+    ["You haven't stolen enough to reach your quota yet\."] 													  = { status = "not stolen enough", },
+    ["You still have to pay the guild to reach your quota\."] 													  = { status = "have to pay", },
+    ["You have reached and paid your minimum quota this period but still have some outstanding debt to settle\."] = { status = "outstand debt", },
+    ["You have reached and paid your quota this period\."] 														  = { status = "reached and paid", },
+    ["You have exceeded your quota\. That wasn't a very wise decision, but you must have had your reasons\."]     = { status = "exceeded", },	
+}
+
+--TODO: Set to unknown on check!!!
+function GetQuotaStatus (sName, sLine, wildcards)
+	if Debug == true then Note("Quota Status: " .. wildcards[1]) end
+    for k,  v in pairs (QuotaMessages) do
+		if wildcards[1] == k then
+			Quota.status = v.status
+			if Debug == true then Note("Got Quota Status: " .. Quota.status) end
+			break
+		end
+	end
+	if Quota.status == "leave of absence" then
+		DisableQuotaTriggers()
+		return
+	end
+	local iHours, iMinutes, iSeconds = 0, 0, 0
+	if Quota.hours ~= "unknown" then iHours = Quota.hours end
+	if Quota.minutes ~= "unknown" then iMinutes = Quota.minutes end
+	if Quota.seconds ~= "unknown" then iSeconds = Quota.seconds end
+	SetQuotaTimers(iHours, iMinutes, iSeconds)
+end
+
+function GetQuotaTime (sName, sLine, wildcards)
+	if Debug == true then Note("Quota Time: " .. sLine) end
+	if wildcards.hours ~= "" then Quota.hours = tonumber(wildcards.hours) end
+	if wildcards.minutes ~= "" then Quota.minutes = tonumber(wildcards.minutes) end
+	if wildcards.seconds ~= "" then Quota.seconds = tonumber(wildcards.seconds) end
+	Quota.time = string.format("%d\:%02d\:%02d\s", Quota.hours, Quota.minutes, Quota.seconds)
+    if Debug == true then Note("Time Left: " .. string.format("%d\:%02d\:%02d\s", Quota.hours, Quota.minutes, Quota.seconds) ) end
+end
+
+function SetQuotaTimers(iHours, iMinutes, iSeconds)
+	if Debug == true then Note("Setting Quota Timers: " .. "Hr: " .. iHours .. "|Min: " .. iMinutes .. "|Secs: " .. iSeconds) end
+
+
+--Lets remove all previous timers to start:
+	if IsTimer("Quota1NewWarning") == 0 then
+		DeleteTimer ("Quota1NewWarning")
+	end
+	if IsTimer("Quota12HourWarning") == 0 then
+		DeleteTimer ("Quota112HourWarning")
+	end
+	if IsTimer("Quota1HourWarning") == 0 then
+		DeleteTimer ("Quota1HourWarning")
+	end
+	if IsTimer("Quota30MinutesWarning") == 0 then
+		DeleteTimer ("Quota30MinutesWarning")
+	end
+	if IsTimer("Quota15MinuteWarning") == 0 then
+		DeleteTimer ("Quota15MinuteWarning")
+	end
+	if IsTimer("Quota5MinuteWarning") == 0 then
+		DeleteTimer ("Quota5MinuteWarning")
+	end
+	
+	if Debug == true then Note("Status = " .. Quota.status) end
+	if Quota.status == "unknown" then
+		ColourNote(TextColour, BackgroundColour, "Quota Timer Error: Unable to determine quota status.")
+		return
+	--Do nothing
+	elseif Quota.status == "leave of absence" then
+		ColourNote(TextColour, BackgroundColour, "Quota Timer Error: Quota status is leave of absence.")
+		return
+	--Timer for new quota and 15 mins just to check manually to make sure
+	elseif Quota.status == "reached and paid" or Quota.status == "exceeded" then
+		--Note(string.format("%02d\h %02d\m %02d\s", iHours, iMinutes, iSeconds) .. "|Warn in " .. string.format("%02d\h %02d\m %02d\s", iHours, iMinutes, iSeconds) )
+		AddTimer ("Quota1NewWarning", iHours, iMinutes, iSeconds, "", myFlags, "TimeWarning")
+		AddTimer ("Quota15MinuteWarning", 0, iMinutes - 15, iSeconds, "", myFlags, "TimeWarning")
+	--1 hour, 30 min, 15 min, 5 min warnings
+	else
+		AddTimer ("Quota1NewWarning", iHours, iMinutes, iSeconds, "", myFlags, "TimeWarning")
+
+		--1 Hour warning
+		if iHours >= 1 then
+			--Note("1hr: " .. string.format("%02d\h %02d\m %02d\s", iHours, iMinutes, iSeconds) .. "|Warn in " .. string.format("%02d\h %02d\m %02d\s", iHours - 1, iMinutes, iSeconds) )
+			AddTimer ("Quota1HourWarning", iHours - 1, iMinutes, iSeconds, "", myFlags, "TimeWarning")
+		--30 min warning
+		elseif iMinutes >= 30 then
+			--Note("30mins: " .. string.format("%02d\h %02d\m %02d\s", iHours, iMinutes, iSeconds) .. "|Warn in " .. string.format("%02d\h %02d\m %02d\s", 0, iMinutes - 30, iSeconds) )
+			AddTimer ("Quota30MinuteWarning", 0, iMinutes - 30, iSeconds, "", myFlags, "TimeWarning")
+		--15 min warning
+		elseif iMinutes >= 15 then
+			--Note("15mins: " .. string.format("%02d\h %02d\m %02d\s", iHours, iMinutes, iSeconds) .. "|Warn in " .. string.format("%02d\h %02d\m %02d\s", 0, iMinutes - 15, iSeconds) )
+			AddTimer ("Quota15MinuteWarning", 0, iMinutes - 15, iSeconds, "", myFlags, "TimeWarning")
+		--5 min warning
+		elseif iMinutes >= 5 then
+			--Note("5mins: " .. string.format("%02d\h %02d\m %02d\s", iHours, iMinutes, iSeconds) .. "|Warn in " .. string.format("%02d\h %02d\m %02d\s", 0, iMinutes - 5, iSeconds) )
+			--AddTimer ("Quota5MinuteWarning", 0, iMinutes -  5, iSeconds, "", myFlags, "TimeWarning")
+			AddTimer ("Quota5MinuteWarning", 0, 0, 2, "", myFlags, "TimeWarning")
+		end
+		--For testing purposes only!
+		--AddTimer ("Quota2SecondWarning", 0, 0, 2, "", myFlags, "TimeWarning")
+	end
+end
+
+--Display warnings
+function TimeWarning (sName)
+	sTime, sVar = string.match(sName, "Quota(%d+)(%w+)Warning")
+	if sVar == "New" or tonumber(sTime) == 12 then
+		ColourNote(TextColour, BackgroundColour, "QUOTA STATUS: You're quota period has now ended... and restarted.")
+		Quota.status = "not stolen enough"
+		Quota.hours = 12
+		Quota.minutes = 0
+		Quota.seconds = 0
+		Quota.amount_stolen = 0
+		Quota.amount_paid = 0
+		Quota.amount_lefttopay = 0
+		SetQuotaTimers(Quota.hours, Quota.minutes, Quota.seconds)
+		if sVar == "New" then
+			--Add timer for 12 hours, this one can keep going
+			AddTimer ("Quota12HourWarning", 12, 0, 0, "", myFlags - timer_flag.OneShot, "TimeWarning")
+		end
+	else
+		ColourNote(TextColour, BackgroundColour, "*** QUOTA WARNING: " .. sTime .. " " .. string.lower(sVar) .. "s remaining. STATUS: " .. Quota.status .. "! ***")
+		if tonumber(sTime) == 1 then
+			AddTimer ("Quota30MinuteWarning", 0, 30, 0, "", myFlags, "TimeWarning")
+		elseif tonumber(sTime) == 30 then
+			AddTimer ("Quota15MinuteWarning", 0, 15, Quota.seconds, "", myFlags, "TimeWarning")
+		elseif tonumber(sTime) == 15 then
+			--Only add 5 min timer if theres still quota outstanding
+			if Quota.status ~= "reached and paid" and Quota.status ~= "exceeded" then
+				AddTimer ("Quota5MinuteWarning", 0, 10, Quota.seconds, "", myFlags, "TimeWarning")
+			end
+		end
+	end
+end
+
+function DisplayQuota (sName, sLine, wildcards)
+	ColourNote(TextColour, BackgroundColour, "QUOTA STATUS: " .. Quota.status )
+	if Quota.status == "not stolen enough" then
+		if Quota.amount_stolen ~= "unknown" then
+			ColourNote(TextColour, BackgroundColour, "AMOUNT STOLEN: " .. Quota.amount_stolen)
+		end
+	end
+	if Quota.minimum ~= "unknown" then
+		ColourNote(TextColour, BackgroundColour, "MINIMUM QUOTA: " .. Quota.minimum)
+	end
+	if Quota.maximum ~= "unknown" then
+		ColourNote(TextColour, BackgroundColour, "MAXIMUM QUOTA: " .. Quota.maximum)
+	end
+	if Quota.status == "have to pay" or Quota.status == "outstanding debt" or Quota.status == "exceeded" then
+		if Quota.amount_lefttopay ~= "unknown" and Quota.amount_lefttopay ~= 0 then
+			ColourNote(TextColour, BackgroundColour, "OUTSTANDING DEBT: " .. Quota.amount_lefttopay)
+		end
+	end
+	
+	if IsTimer("Quota1NewWarning") == 0 then
+		iSecondsToGo = tonumber(GetTimerInfo("Quota1NewWarning", 13))
+		ColourNote(TextColour, BackgroundColour, "TIME LEFT: " .. TimeFormat(iSecondsToGo) )
+	elseif IsTimer("Quota12HourWarning") == 0 then
+		iSecondsToGo = tonumber(GetTimerInfo("Quota12HourWarning", 13))
+		ColourNote(TextColour, BackgroundColour, "TIME LEFT: " .. TimeFormat(iSecondsToGo) )
+	else
+		ColourNote(TextColour, BackgroundColour, "TIME LEFT: unknown" )
+	end	
+end
+
+function EnableAmountStolen(sName, sLine, wildcards)
+	if Debug == true then Note("Enabling amount stolen capture.") end
+	EnableTrigger("QuotaAmountStolenLine", true)
+end
+
+function AmountStolen(sName, sLine, wildcards)
+	if Debug == true then Note("Captured amount stolen.") end
+	Quota.amount_stolen = wildcards.amount
+	EnableTrigger("QuotaAmountStolenLine", false)
+end
+
+function GetMinimumQuota(sName, sLine, wildcards)
+	if Debug == true then Note("Captured minumum quota.") end
+	Quota.minimum = wildcards.amount
+end
+
+function GetMaximumQuota(sName, sLine, wildcards)
+	if Debug == true then Note("Captured maximum quota.") end
+	Quota.maximum = wildcards.amount
+end
+
+function EnableAmountPaid(sName, sLine, wildcards)
+	if Debug == true then Note("Enabling amount paid capture.") end
+	EnableTrigger("QuotaAmountPaid", true)
+end
+
+function AmountPaid(sName, sLine, wildcards)
+	if Debug == true then Note("Captured amount paid.") end
+	Quota.amount_paid = wildcards.amount
+	EnableTrigger("QuotaAmountPaid", false)
+end
+function EnableAmountLeftToPay(sName, sLine, wildcards)
+	if Debug == true then Note("Enabling amount left to pay capture.") end
+	EnableTrigger("QuotaAmountLeftToPay", true)
+end
+
+function AmountLeftToPay(sName, sLine, wildcards)
+	if Debug == true then Note("Captured amount left to pay.") end
+	Quota.amount_lefttopay = wildcards.amount
+	EnableTrigger("QuotaAmountLeftToPay", false)
+end
+
+function QuotaPaid(sName, sLine, wildcards)
+	if Quota.status == "have to pay" or Quota.status == "outstand debt" then
+		Quota.status = "reached and paid"
+	end
+end
+
+function TimeFormat(nNum)
+    iSecond = nNum
+--	iDay = math.floor(iSecond / (86400))
+    iHour = math.floor (iSecond / 3600)
+	iMinute = math.floor( (iSecond - (iHour * 3600)) / 60 )
+    iSecond = math.floor( iSecond - (iHour * 3600) - (iMinute * 60) )
+	sString = ""
+--	if iDay > 0 then sString = iDay .. "D" end
+--	if sString ~= "" then sString = sString .. " " end
+	sString = sString .. string.format("%d\:%02d\:%02d\s", iHour, iMinute, iSecond)
+	return sString
+end
+
+--MINIWINDOW STUFF
+
+--This might be unnecesary
+quota_info = {
+{"STATUS", "unknown"},
+{"TIME", "unknown"},
+}
+PrevQuotaSize = #quota_info
+
+function ToggleMiniwindow(sName, sLine, wildcards)
+	if wildcards.change == "reset" then
+		if Miniwindow == true then
+			WindowPosition(win, 0, 0, miniwin.pos_center_all, 4)
+			update_window()
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow reset to center.")
+			return
+		else
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow is off, use 'qt miniwindow' first to display window..")
+			return
+		end
+	elseif wildcards.change == "on" then
+		if Miniwindow == false then
+			Miniwindow = true
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow: on.")
+		else
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow is already on.")
+			return
+		end			
+	elseif wildcards.change == "off" then
+		if Miniwindow == true then
+			Miniwindow = false
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow: off.")
+		else
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow is already off.")
+			return
+		end					
+	elseif wildcards.change == "brief" then
+		if BriefMiniwindow == false then
+			BriefMiniwindow = true
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow: brief.")
+			update_window()
+			return
+		else
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow is already brief.")
+			return
+		end
+	elseif wildcards.change == "verbose" then
+		if BriefMiniwindow == true then
+			BriefMiniwindow = false
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow: verbose.")
+			update_window()
+			return
+		else
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow is already verbose.")
+			return
+		end
+	else
+		if Miniwindow == true then
+			Miniwindow = false
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow: off.")
+		else
+			Miniwindow = true
+			ColourNote(TextColour, BackgroundColour, "Quota Timer miniwindow: on.")
+			return
+		end
+	end
+	WindowShow (win,  Miniwindow)
+end
+--------------------------------------------------------------------------------
+--   MAIN WINDOW
+--------------------------------------------------------------------------------
+function update_window()
+
+	local status = "unknown"
+	local time_left = "unknown"
+	local stolen = "unknown"
+	local left_to_pay = "unknown"
+	local minimum = "unknown"
+	local maximum = "unknown"
+	
+	--Get amount stolen
+	if Quota.amount_stolen ~= nil then
+		stolen = Quota.amount_stolen
+	end
+
+	--Get amount left to pay
+	if Quota.amount_lefttopay ~= nil then
+		left_to_pay = Quota.amount_lefttopay
+	end
+
+	--Get time left
+	if IsTimer("Quota1NewWarning") == 0 then
+		iSecondsToGo = tonumber(GetTimerInfo("Quota1NewWarning", 13))
+		time_left = TimeFormat(iSecondsToGo) 
+	elseif IsTimer("Quota12HourWarning") == 0 then
+		iSecondsToGo = tonumber(GetTimerInfo("Quota12HourWarning", 13))
+		time_left = TimeFormat(iSecondsToGo) 
+	end	
+
+	--Get current status
+	if Quota.status ~= nil then
+		status = Quota.status
+	end
+
+	--Get minimum quota
+	if Quota.minimum ~= nil then
+		minimum = Quota.minimum
+	end
+
+	--Get maximum quota
+	if Quota.maximum ~= nil then
+		maximum = Quota.maximum
+	end
+
+	--Set up table for brief or non-brief
+	if BriefMiniwindow == true then
+		quota_info = {
+					{"STATUS", status},
+					{"TIME", time_left},
+		}
+	else
+		quota_info = {
+					{"STATUS", status},
+					{"STOLEN", stolen},
+					{"TO PAY", left_to_pay},
+					{"MIN", minimum},
+					{"MAX", maximum},
+					{"TIME", time_left},
+		}
+	end
+	
+	--Resize window if quota_info has changed
+	if PrevQuotaSize ~= #quota_info then
+		PrevQuotaSize = #quota_info
+		window_height = (((line_spacing+font_height)*(#quota_info))-line_spacing)+(window_inner_padding*2)+(window_outter_padding*2)+window_header_height
+		WindowResize(win, window_width, window_height, ColourNameToRGB("black"))
+		WindowRectOp(win, miniwin.rect_fill, 0, 0, window_width, window_height, 0)
+
+	end
+	
+	WindowCircleOp (win, 3, window_outter_padding, window_outter_padding, window_width - window_outter_padding,
+	window_height - window_outter_padding, ColourNameToRGB(MininwindowBorderColour), 0, window_border, ColourNameToRGB("black"), 0, 15, 15)
+	WindowAddHotspot(win, "header", window_outter_padding, window_outter_padding, window_width - window_outter_padding,window_header_height+10,   --rectangle
+                 "",   -- MouseOver
+                 "",   -- CancelMouseOver
+                 "mousedown",
+                 "cancelmousedown", 
+                 "mouseup", 
+                 "Click to drag.",  -- tooltip text
+                 10, 0)  -- hand cursor
+	WindowDragHandler(win, "header", "dragmove", "dragrelease", 0) 
+	WindowShow (win,  Miniwindow)
+	for i, v in ipairs(quota_info) do
+		
+		WindowText (win, "f", (v[1]..":"), window_outter_padding+window_inner_padding, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height)), window_outter_padding+window_inner_padding+quota_info_name_width, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height))+font_height, ColourNameToRGB(TextColour), false) -- not Unicode
+		WindowAddHotspot(win, "quota_"..tostring(i), window_outter_padding+window_inner_padding, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height)), window_outter_padding+window_inner_padding+quota_info_name_width, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height))+font_height,   --rectangle
+                 "",   -- MouseOver
+                 "",   -- CancelMouseOver
+                 "mousedown",
+                 "cancelmousedown", 
+                 "mouseup", 
+                 "Check quota",  -- tooltip text
+                 1, 0)  -- hand cursor
+		
+		if v[2] ~= nil then
+			WindowText (win, "f", (v[2]), window_outter_padding+window_inner_padding+quota_info_name_width+1, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height)), window_width-window_outter_padding, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height))+font_height, get_status_colour(v[1]), false) -- not Unicode
+		else
+			WindowText (win, "f", ("?"), window_outter_padding+window_inner_padding+quota_info_name_width, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height)), window_width-window_outter_padding, ((line_spacing+font_height)*(i-1))+((window_outter_padding+window_inner_padding+window_header_height))+font_height, get_status_colour(v[2]), false) -- not Unicode
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+--   DRAG AND HOTSPOT HANDLERS
+--------------------------------------------------------------------------------
+function mousedown(flags, hotspot_id)
+	if hotspot_id == "header" then
+		startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
+	end
+end -- mousedown
+
+function cancelmousedown(flags, hotspot_id)
+end -- cancelmousedown
+
+function mouseup(flags, hotspot_id)
+	for i, v in ipairs(quota_info) do
+		if hotspot_id == "quota_"..tostring(i) then
+			if CheckQuotaAlias ~= "" then
+				Send(CheckQuotaAlias)
+			else
+				ColourNote(TextColour, BackgroundColour, "Quota Timer: No alias set, please edit the .xml file to your alias.")
+			end
+		end
+	end
+end -- mouseup
+
+function dragmove(flags, hotspot_id)
+	if hotspot_id == "header" then
+		local posx, posy = WindowInfo (win, 17), WindowInfo (win, 18)
+		EnableTimer("tic", false) -- otherwise window update from tic ends drag
+		-- move the window to the new location
+		WindowPosition(win, posx - startx, posy - starty, 0, 6)
+  
+		-- change the mouse cursor shape appropriately
+		if posx < 0 or posx > GetInfo (281) or
+		posy < 0 or posy > GetInfo (280) then
+			check (SetCursor ( 11))   -- X cursor
+		else
+			check (SetCursor ( 1))   -- hand cursor
+		end -- if
+	end
+end -- dragmove
+
+function dragrelease(flags, hotspot_id)
+	update_window()
+	EnableTimer("tic", true)
+end -- dragrelease
+
+function get_status_colour_old(status)
+
+    if status == "leave of absence" then
+		return ColourNameToRGB(TextColour)
+    elseif status == "not stolen enough" then
+		return ColourNameToRGB("yellow")
+    elseif status == "have to pay" then
+		return ColourNameToRGB("yellow")
+    elseif status == "outstand debt" then
+		return ColourNameToRGB("yellow")
+    elseif status == "reached and paid" then
+		return ColourNameToRGB(TextColour)
+    elseif status == "exceeded" then
+		return ColourNameToRGB("red")
+	else	--This should not happen!
+		return ColourNameToRGB("white")
+	end
+end
+
+function get_status_colour(line)
+	if line == "STATUS" or line == "STOLEN" then
+	    if Quota.status == "leave of absence" then
+			return ColourNameToRGB(TextColour)
+		elseif Quota.status == "not stolen enough" then
+			return ColourNameToRGB("yellow")
+		elseif Quota.status == "have to pay" then
+			return ColourNameToRGB("yellow")
+		elseif Quota.status == "outstand debt" then
+			return ColourNameToRGB("yellow")
+		elseif Quota.status == "reached and paid" then
+			return ColourNameToRGB(TextColour)
+		elseif Quota.status == "exceeded" then
+			return ColourNameToRGB("red")
+		end
+	elseif line == "TO PAY" then
+		if Quota.amount_lefttopay == "$0" then
+			return ColourNameToRGB(TextColour)
+		else
+			return ColourNameToRGB("yellow")
+		end
+	elseif line == "TIME" then
+		if Quota.status == "reached and paid" then
+			return ColourNameToRGB(TextColour)
+		elseif iSecondsToGo ~= nil then
+			if iSecondsToGo >= 3600 then
+				return ColourNameToRGB(TextColour)
+			elseif iSecondsToGo  >= 1800 then
+				return ColourNameToRGB("yellow")
+			elseif iSecondsToGo >= 900 then
+				return ColourNameToRGB("orange")
+			elseif iSecondsToGo >= 300 then
+				return ColourNameToRGB("red")
+			end
+		end
+	elseif line == "MIN" or line == "MAX" then
+		return ColourNameToRGB(TextColour)
+	end
+
+	return ColourNameToRGB("silver")
+end
+--------------------------------------------------------------------------------
+--   START EXECUTION HERE
+--------------------------------------------------------------------------------
+
+win = "quota_status" .. GetPluginID ()
+WindowCreate (win, 0, 0, 0, 0, miniwin.pos_center_all, 0, ColourNameToRGB("black")) -- we must load the window before we can load fonts
+	
+font_size = 8
+WindowFont (win, "f", "Consolas", font_size, false, false, false, false)
+
+font_height = WindowFontInfo (win, "f", 1)
+
+quota_info_name_width = 0
+quota_message_width = WindowTextWidth (win, "f", ("00:00:00s "))
+--Determine longest possible value for left text
+for i, v in ipairs(quota_info) do 
+	if quota_info_name_width < WindowTextWidth (win, "f", (v[1].."  ")) then
+		quota_info_name_width = WindowTextWidth (win, "f", (v[1].."  "))
+	end	
+end
+for k, v in pairs(QuotaMessages) do 
+	if quota_message_width < WindowTextWidth (win, "f", (v.status.." ")) then
+		quota_message_width = WindowTextWidth (win, "f", (v.status.. " "))
+	end	
+end
+
+window_text_width = quota_info_name_width + quota_message_width
+window_inner_padding = 5
+window_outter_padding = 5
+window_width = window_text_width+(window_inner_padding*2)+(window_outter_padding*2)
+
+window_header_height = 1
+line_spacing = 2
+window_height = (((line_spacing+font_height)*(#quota_info))-line_spacing)+(window_inner_padding*2)+(window_outter_padding*2)+window_header_height
+PrevWinHeight = window_height
+window_border = 2
+--Replaced inside the window since this didn't work with a variable
+--window_border_colour = ColourNameToRGB("midnightblue")
+
+window_pos_x = tonumber(GetVariable("window_pos_x"))
+window_pos_y = tonumber(GetVariable("window_pos_y"))
+WindowCreate (win, 0, 0, window_width, window_height, miniwin.pos_center_all, 4, ColourNameToRGB("white"))
+if (type(window_pos_x) == "number") and (type(window_pos_x) == "number") then
+	WindowPosition(win, window_pos_x, window_pos_y, 0, 6)
+end
+
+
+
+--[[
+
+QuotaStatusOnLeaveTrigger
+trigger:                > You are on leave of absence.  <
+--No Quota
+--Disable triggers
+
+QuotaTimeTrigger
+trigger: You still have 11 hours, 59 minutes, 47 seconds left this quota period.
+--Get Time
+
+QuotaStatusTrigger
+trigger: You haven't stolen enough to reach your quota yet.
+	You still have to pay the guild to reach your quota.
+	You have reached and paid your minimum quota this period but still have some outstanding debt to settle.
+	You have reached and paid your quota this period.
+--Get Status, mor elines to following
+
+]]--
+]]>
+</script> 
+<!--  Triggers  -->
+<plugin
+   name="QuotaTimers"
+   author="Reva"
+   id="ae3eb4324eaadba429c562c4"
+   language="Lua"
+   purpose="Timers for Quota"
+   date_written="2018-03-18"
+   date_modified="2018-02-11"
+   save_state="y"
+   requires="4.84"
+   version="0.5"
+   >
+</plugin>
+
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="quota"
+   enabled="y"
+   ignore_case="y"
+   sequence="30"
+   script="DisplayQuota"
+   name="DisplayQuota"
+  > 
+  </alias>
+
+  <alias
+   match="qt help"
+   enabled="y"
+   ignore_case="y"
+   sequence="30"
+   script="QTHelp"
+   name="DisplayHelp"
+  > 
+  </alias>
+
+  <alias
+   match="quota reset" 
+   enabled="y"
+   ignore_case="y"
+   sequence="30"
+   script="ResetQuota"
+   name="ResetQuota"
+   send_to="12"
+   
+  > 
+    <send>
+	ColourNote(TextColour, BackgroundColour, "Quota info and timers reset.")
+  </send>
+
+  </alias>
+
+  <alias
+   match="qt miniwindow(?: (?P<change>on|off|reset|brief|verbose))?"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ToggleMiniwindow"
+   name="ToggleMiniwindow"
+  > 
+  </alias>
+
+</aliases>
+
+<triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^         \> Ankh-Morpork Thieves' Guild Licence \(tm\)"
+   regexp="y"
+   sequence="12"
+   script="EnableQuotaTriggers"
+   name="StartQuotaLine"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Guild cut"
+   regexp="y"
+   sequence="12"
+   script="DisableQuotaTriggers"
+   name="EndQuotaLine"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="(You are on leave of absence\.|^You haven't stolen enough to reach your quota yet\.$|^You still have to pay the guild to reach your quota\.$|^You have reached and paid your minimum quota this period but still have some outstanding debt to settle\.$|^You have reached and paid your quota this period\.$|^You have exceeded your quota\. That wasn't a very wise decision, but you must have had your reasons\.$)"
+   regexp="y"
+   sequence="12"
+   script="GetQuotaStatus"
+   name="QuotaStatusLine"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^You still have (?:(?P<hours>\d+) hours?, )?(?:(?P<minutes>\d+) minutes?, )?(?:(?P<seconds>\d+) seconds? )?left this quota period\.$"
+   regexp="y"
+   sequence="12"
+   script="GetQuotaTime"
+   name="QuotaTimeLine"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^People have brought receipts to the guild, with the following value:$"
+   regexp="y"
+   sequence="12"
+   script="EnableAmountStolen"
+   name="QuotaEnableAmountStolen"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^    A?(?P<amount>.*)\.$"
+   regexp="y"
+   sequence="12"
+   script="AmountStolen"
+   name="QuotaAmountStolenLine"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Minimum quota: A?(?P<amount>.*)\.$"
+   regexp="y"
+   sequence="12"
+   script="GetMinimumQuota"
+   name="QuotaMinimumLine"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Maximum quota: A?(?P<amount>.*)\.$"
+   regexp="y"
+   sequence="12"
+   script="GetMaximumQuota"
+   name="QuotaMaximumLine"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^You've already paid the guild:$"
+   regexp="y"
+   sequence="12"
+   script="EnableAmountPaid"
+   name="QuotaEnableAmountPaid"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^    A?(?P<amount>.*)\.$"
+   regexp="y"
+   sequence="12"
+   script="AmountPaid"
+   name="QuotaAmountPaid"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^That leaves to pay:$"
+   regexp="y"
+   sequence="12"
+   script="EnableAmountLeftToPay"
+   name="QuotaEnableAmountLeftToPay"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^    A?(?P<amount>.*)\.$"
+   regexp="y"
+   sequence="12"
+   script="AmountLeftToPay"
+   name="QuotaAmountLeftToPay"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   match="^Artan whispers to you: Ok, looks like you've got enough to cover your debts for now\.$"
+   regexp="y"
+   sequence="12"
+   script="QuotaPaid"
+   name="QuotaPaidLine"
+  >
+  </trigger>
+  
+
+</triggers>
+
+<timers>
+  <timer name="tic" enabled="y" minute="0" second="1.00" offset_second="0.00"    send_to="12"
+>
+  <send>  
+	update_window()
+  </send>
+
+  </timer>
+</timers>
+
+</muclient>

@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="iso-8859-1"?>
 <!DOCTYPE muclient>
 
-<!-- Title for Explanation, by Author -->
-<!-- Other info -->
+<!-- TeachMate, record and display XP gained by teaching, by Reva -->
+<!-- 'teach help' for help -->
+<!-- v1.1. - fixed formatting as well as manually adding xp gained from teaching -->
 
 <muclient>
 <plugin

@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- Title for Explanation, by Author -->
+<!-- Other info -->
+
+<muclient>
+<plugin
+   name="TeachMate"
+   author="Reva"
+   id="abbde794de489e942ee562c2"
+   language="Lua"
+   purpose="Record XP From Teaching"
+   date_written="2021-01-20"
+   requires="4.84"
+   save_state="y" 
+   version="1.1"
+   >
+</plugin>
+<script>
+<![CDATA[
+require "json"
+require "tprint"
+
+cText = "lime"
+--"^You gain (?P<gain>\d+) xp from teaching (?P<fullname>(?P<firstname>\w+).*) (?P<levels>\d+) levels? of (?P<skill>\w+) for (?P<spent>\d+) xp\.$"
+--  You gain 227878 xp from teaching Klaz Rehevkor 10 levels of fighting.defence.dodging for 4719195 xp.
+--assert (loadstring (GetVariable ("TeachTable") or "")) ()
+function OnPluginInstall()
+	TeachTable = {}
+	if GetVariable("TeachTable") ~= nil then
+		TeachTable = json.decode(GetVariable("TeachTable"))
+		for i, v in ipairs(TeachTable) do
+			if v["date_table"] == nil then
+				TeachTable[i]["date_table"] = os.date("!*t")
+				Note("missing date table in '" ..i.."' adding it as today...")
+			end
+		end
+	end
+end
+
+function OnPluginSaveState()
+	SetVariable ("TeachTable", json.encode(TeachTable))
+	SetVariable ("sDisplayName", sDisplayName)
+end
+
+function AddTeach (sName, sLine, wildcards)
+	--tprint(wildcards)
+
+	--tprint(wildcards)
+	TeachTable[#TeachTable +1] = {}
+	for k, v in pairs (wildcards) do
+		if tonumber (k) == nil then
+			TeachTable[#TeachTable][k] = v
+		end
+	end
+	--local sTest = os.date("*t",os.time() + iGMTMod * 60 * 60)
+	TeachTable[#TeachTable]["date_table"] = os.date("!*t")
+	--ColourNote(cText, "", "TEACH RECORDED:" .. json.encode(TeachTable))
+	ColourNote(cText, "", "Teach("..#TeachTable..") Recorded: Spent: " .. AddCommas(tonumber(TeachTable[#TeachTable]["spent"])) .. "|Gained: " .. AddCommas(tonumber(TeachTable[#TeachTable]["gain"])) .. " ("..string.format("%.2f", tonumber(TeachTable[#TeachTable]["gain"])/(tonumber(TeachTable[#TeachTable]["spent"])/100)) .."%)")
+	--tprint (TeachTable)
+	--table.insert(TeachTable, {["fullname"] = wilcards.fullname, ["name"] = wildcards.name,
+end
+
+function ManualAddTeach (sName, sLine, wildcards)
+	--tprint(wildcards)
+	
+	if wildcards.fullname == nil or wildcards.fullname == "" then
+		wildcards.fullname = "Unknown"
+		wildcards.firstname = "Unknown"
+	end
+	if wildcards.levels == nil or wildcards.levels == "" then
+		wildcards.levels = "?"
+	end
+	if wildcards.skill == nil or wildcards.skill == "" then
+		wildcards.skill = "unknown"
+	end
+	if wildcards.spent == nil or wildcards.spent == "" then
+		wildcards.spent = 0
+	end
+	wildcards.fullname = FirstToUpper(TrimTitles(wildcards.fullname))
+	wildcards.firstname = string.match(wildcards.fullname, "(%w+)")
+	--tprint(wildcards)
+
+
+	TeachTable[#TeachTable +1] = {}
+	for k, v in pairs (wildcards) do
+		if tonumber (k) == nil then
+			TeachTable[#TeachTable][k] = v
+		end
+	end
+	--local sTest = os.date("*t",os.time() + iGMTMod * 60 * 60)
+	TeachTable[#TeachTable]["date_table"] = os.date("!*t")
+	--ColourNote(cText, "", "TEACH RECORDED:" .. json.encode(TeachTable))
+	ColourNote(cText, "", "Teach("..#TeachTable..") Recorded: Spent: " .. AddCommas(tonumber(TeachTable[#TeachTable]["spent"])) .. "|Gained: " .. AddCommas(tonumber(TeachTable[#TeachTable]["gain"])) .. " ("..string.format("%.2f", tonumber(TeachTable[#TeachTable]["gain"])/(tonumber(TeachTable[#TeachTable]["spent"])/100)) .."%)")
+	--tprint (TeachTable)
+	--table.insert(TeachTable, {["fullname"] = wilcards.fullname, ["name"] = wildcards.name,
+end
+
+--[[
+1) Spent: 4,719,195|Gained: 227,878 (4.83%)|Klaz Rehevkor|Skill: fighting.defence.dodging +10
+2) Spent: 2,986,247|Gained: 51,547 (1.73%)|Booger|Skill: fighting.defence.dodging +3
+3) Spent: 2,953,470|Gained: 64,344 (2.18%)|Booger|Skill: fighting.defence.dodging +3
+4) Spent: 3,020,083|Gained: 114,279 (3.78%)|Booger|Skill: fighting.defence.dodging +3
+5) Spent: 5,428,067|Gained: 235,580 (4.34%)|Klaz Rehevkor|Skill: fighting.defence.dodging +11
+6) Spent: 7,283,979|Gained: 156,998 (2.16%)|Klaz Rehevkor|Skill: fighting.defence.dodging +14
+7) Spent: 3,234,388|Gained: 134,656 (4.16%)|Klaz Rehevkor|Skill: fighting.defence.dodging +6
+8) Spent: 6,143,569|Gained: 228,809 (3.72%)|Klaz Rehevkor|Skill: fighting.defence.dodging +11
+]]--
+function AddCommas(n) -- credit http://richard.warburton.it
+	local left,num,right = string.match(n,'^([^%d]*%d)(%d*)(.-)$')
+	return left..(num:reverse():gsub('(%d%d%d)','%1,'):reverse())..right
+end
+
+
+--[[
+You start to teach Booger 3 levels of fighting.defence.dodging for 2953470 xp.
+You struggle to find the best way to educate Booger and it leaves you feeling drained.
+You gain 64344 xp from teaching Booger 3 levels of fighting.defence.dodging for 2953470 xp.
+Saving...
+Booger finishes learning 3 levels of fighting.defence.dodging from you.
+
+
+
+You struggle to find the best way to educate Booger and it leaves you feeling drained.
+You gain 51547 xp from teaching Booger 3 levels of fighting.defence.dodging for 2986247 xp.
+
+1) Spent: 4,719,195|Gained: 227,878 (4.83%)|Klaz Rehevkor|Skill: fighting.defence.dodging +10
+2) Spent: 2,986,247|Gained: 51,547 (1.73%)|Booger|Skill: fighting.defence.dodging +3
+3) Spent: 2,953,470|Gained: 64,344 (2.18%)|Booger|Skill: fighting.defence.dodging +3
+]]--
+
+UndoTable = {}
+function RemoveTeach(sName, sLine, wildcards)
+	if TeachTable[tonumber(wildcards[1])] ~= nil then
+		ColourNote(cText, "", "Removing teach entry #" .. wildcards[1] ..".")
+		table.insert(UndoTable, TeachTable[tonumber(wildcards[1])])
+		table.remove(TeachTable, tonumber(wildcards[1]))
+	else
+		ColourNote(cText, "", "No teach entry  line #" .. wildcards[1] .. " use 'teach list' to list entries.")
+	end
+end
+
+function RedoTeach(sName, sLine, wildcards)
+	if #UndoTable >= 1 then
+		ColourNote(cText, "", "Redoing last removed teach entry.")
+		table.insert(TeachTable, UndoTable[#UndoTable])
+		table.remove(UndoTable, #UndoTable)
+	else
+		ColourNote(cText, "", "No removed teach entry  lines to redo.")
+	end
+end
+
+function Test()
+	--local sTest = os.date("%c",os.time() + iGMTMod * 60 * 60)
+	local sTest = os.date("!*t")
+	tprint(sTest)
+	--Note(sTest)
+	
+end
+
+function TeachHelp()
+	ColourNote(cText, "", "TeachMate 1.1, by Reva")
+	ColourNote(cText, "", " <> <> <> <> <> <> <> ")
+	ColourNote(cText, "", "Commands:")
+	ColourNote(cText, "", " 'teach help' - display this help screen")
+    ColourNote(cText, "", " 'teach display\\list' - list recorded teaches")
+    ColourNote(cText, "", " 'teach name <full|brief>' - change name displayed to full name or brief")
+    ColourNote(cText, "", " 'teach show <all|week|month>' - show all teaches recorded or for current week or month")
+    ColourNote(cText, "", " 'teach remove <number>' - remove teach recorded based on number shown in list")
+    ColourNote(cText, "", " 'teach add xp <xp gained>(, name <name>, [levels\\lvls] <levels>, skill <skill>, spent <xp spent>)' - manually add teach information, only required field is xp gained but optionally can add the rest of the information or parts of it in order")
+end
+
+sDisplayName = "firstname"
+if GetVariable("sDisplayName") ~= nil then
+	sDisplayName = GetVariable("sDisplayName")
+end
+function ChangeNameDisplay(sName, sLine, wildcards)
+	if wildcards.change == "brief" then
+		if sDisplayName == "firstname" then
+			ColourNote(cText, "", "Names in teach list already displaying as 'brief'.")
+		else
+			ColourNote(cText, "", "Names in teach list now displaying as 'brief'.")
+			sDisplayName = "firstname"
+		end
+	else
+		if sDisplayName == "fullname" then
+			ColourNote(cText, "", "Names in teach list already displaying as 'full'.")
+		else
+			ColourNote(cText, "", "Names in teach list now displaying as 'full'.")
+			sDisplayName = "fullname"
+		end
+	end
+	--Note("fn = " .. TeachTable[1][sDisplayName])
+end
+
+sTimeToShow = "all"
+--[[
+if GetVariable("sTimeToShow") ~= nil then
+	sTimeToShow = GetVariable("sTimeToShow")
+end
+]]--
+function ChangeTimeToShow(sName, sLine, wildcards)
+	if wildcards.change == "all" then
+		if sTimeToShow == "all" then
+			ColourNote(cText, "", "Already displaying 'all' entries in teach list.")
+		else
+			ColourNote(cText, "", "Changed to display 'all' entries in teach list.")
+			sTimeToShow = "all"
+		end
+	elseif wildcards.change == "month" then
+		if sTimeToShow == "month" then
+			ColourNote(cText, "", "Already displaying only entries from the last month in teach list.")
+		else
+			ColourNote(cText, "", "Changed to display only entries from the last month in teach list.")
+			sTimeToShow = "month"
+		end
+	else  --week
+		if sTimeToShow == "week" then
+			ColourNote(cText, "", "Already displaying only entries from the last week in teach list.")
+		else
+			ColourNote(cText, "", "Changed to display only entries from the last week in teach list.")
+			sTimeToShow = "week"
+		end
+	end
+	--Note("fn = " .. TeachTable[1][sDisplayName])
+end
+
+
+function ListTeach(sName, sLine, wildcards)
+	--future use to only list recent
+	local bShow = "all"
+	if #TeachTable >= 1 then
+		local bLastMonth = false
+		local bLastWeek = false
+		local bRecent = false
+		local tTime = os.date("!*t")
+		local iGainTotal = 0
+		--this is used to add from manually added entries that do not know the gain
+		local iExtraGainTotal = 0
+		local iSpentTotal = 0
+		local iSp1, iSp2, iSp3, iSp4, iSp5 = 0, 0, 0, 0, 0
+--[07/02/2021]Spent:  3,861,291|Gained:   215,826   (5.59%)|Adamovidlo  |Skill: fighting.special.tactics +14
+		for i, v in ipairs (TeachTable) do
+			if iSp1 < string.len(AddCommas(v["spent"])) then
+				iSp1 = string.len(AddCommas(v["spent"]))
+				--Note("iSp2 = " .. iSp2.." |vsp = " .. AddCommas(v["spent"]))
+			end
+			--if iSp3 < string.len(v["gain"]..string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100))) then
+			if iSp2 < string.len(AddCommas(v["gain"])) then
+				iSp2 = string.len(AddCommas(v["gain"]))
+			end
+			if iSp3 < string.len(string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100))) then
+				if v["spent"] == 0 then
+					iSp3 = string.len("??.??")
+				else
+					iSp3 = string.len(string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100)))
+				end
+			end
+			if iSp4 < string.len(v[sDisplayName]) then
+				iSp4 = string.len(v[sDisplayName])
+			end
+			if iSp5 < string.len(v["skill"]) then
+				iSp5 = string.len(v["skill"])
+			end
+		end
+--		iSp3 = iSp3 + 1
+		bDoNumbers = true
+		bShowTime = false
+		--Note("iSp2 = " .. iSp2)
+		for i, v in ipairs (TeachTable) do
+			local iYearDiff = tTime["year"] - v["date_table"]["year"] 
+			local iYdayDiff = tTime["yday"] - v["date_table"]["yday"] + (365 * iYearDiff)
+			
+			if iYdayDiff > 30 then
+				--Note("sp3 = ".. iSp3 .. "|minus = " .. iSp3-string.len(string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100))))
+				if sTimeToShow == "all" then
+					if bLastMonth == false then 
+						bLastMonth = true
+						ColourNote(cText, "", "More than a month ago:")
+					end
+					if bDoNumbers == true then
+						ColourTell(cText, "", i..")"..string.rep(" ", string.len(tostring(#TeachTable))-string.len(tostring(i))))
+					end
+					ColourTell(cText, "", "["..string.format("%02d/%02d/%d",v["date_table"]["month"],v["date_table"]["day"],v["date_table"]["year"]))
+					if bShowTime == true then
+						ColourTell(cText, "",  string.format(string.rep(" ", 3-string.len(tostring(v["date_table"]["hour"]))).."%d:%02d:%02d",v["date_table"]["hour"],v["date_table"]["min"],v["date_table"]["sec"]))
+					end
+					ColourTell(cText, "",  "]")
+					if v["spent"] ~= 0 then
+						ColourNote(cText, "", "Spent: "..string.rep(" ", iSp1-string.len(AddCommas(v["spent"]))).. AddCommas(tonumber(v["spent"])) .. "|Gained: "..string.rep(" ", iSp2-string.len(AddCommas(v["gain"]))).. AddCommas(tonumber(v["gain"])).. string.rep(" ", iSp3-string.len(string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100)))).." ("..string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100)) .."%)|" .. v[sDisplayName] ..string.rep(" ", iSp4-string.len(v[sDisplayName])).."|Skill: " .. v["skill"]..string.rep(" ", iSp5-string.len(v["skill"])).." +"..v["levels"])
+					else
+						ColourNote(cText, "", "Spent: "..string.rep(" ", iSp1-string.len(AddCommas(v["spent"]))).. AddCommas(tonumber(v["spent"])) .. "|Gained: "..string.rep(" ", iSp2-string.len(AddCommas(v["gain"]))).. AddCommas(tonumber(v["gain"])).. string.rep(" ", iSp3-string.len("??.??")).." (??.??%)|" .. v[sDisplayName] ..string.rep(" ", iSp4-string.len(v[sDisplayName])).."|Skill: " .. v["skill"]..string.rep(" ", iSp5-string.len(v["skill"])).." +"..v["levels"])
+
+--						ColourNote(cText, "", "Spent: "..string.rep(" ", iSp1-string.len(AddCommas(v["spent"]))).. AddCommas(tonumber(v["spent"])) .. "|Gained: "..string.rep(" ", iSp2-string.len(AddCommas(v["gain"]))).. AddCommas(tonumber(v["gain"])).. string.rep(" ", iSp3-string.len("??.??")) .. "(??.??%)|" .. v[sDisplayName] ..string.rep(" ", iSp4-string.len(v[sDisplayName])).."|Skill: " .. v["skill"]..string.rep(" ", iSp5-string.len(v["skill"])).." +"..v["levels"])
+					end
+				end
+			elseif iYdayDiff > 7 then
+				if sTimeToShow == "all" or sTimeToShow == "month" then
+					if bLastWeek == false then
+						bLastWeek = true
+						ColourNote(cText, "", "More than a week ago:")
+					end
+					if bDoNumbers == true then
+						ColourTell(cText, "", i..")"..string.rep(" ", string.len(tostring(#TeachTable))-string.len(tostring(i))))
+					end
+					ColourTell(cText, "", "["..string.format("%02d/%02d/%d",v["date_table"]["month"],v["date_table"]["day"],v["date_table"]["year"]))
+					if bShowTime == true then
+						ColourTell(cText, "",  string.format(string.rep(" ", 3-string.len(tostring(v["date_table"]["hour"]))).."%d:%02d:%02d",v["date_table"]["hour"],v["date_table"]["min"],v["date_table"]["sec"]))
+					end
+					ColourTell(cText, "",  "]")
+					if v["spent"] ~= 0 then
+						ColourNote(cText, "", "Spent: "..string.rep(" ", iSp1-string.len(AddCommas(v["spent"]))).. AddCommas(tonumber(v["spent"])) .. "|Gained: "..string.rep(" ", iSp2-string.len(AddCommas(v["gain"]))).. AddCommas(tonumber(v["gain"])).. string.rep(" ", iSp3-string.len(string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100)))).." ("..string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100)) .."%)|" .. v[sDisplayName] ..string.rep(" ", iSp4-string.len(v[sDisplayName])).."|Skill: " .. v["skill"]..string.rep(" ", iSp5-string.len(v["skill"])).." +"..v["levels"])
+					else
+						ColourNote(cText, "", "Spent: "..string.rep(" ", iSp1-string.len(AddCommas(v["spent"]))).. AddCommas(tonumber(v["spent"])) .. "|Gained: "..string.rep(" ", iSp2-string.len(AddCommas(v["gain"]))).. AddCommas(tonumber(v["gain"])).. string.rep(" ", iSp3-string.len("??.??")).." (??.??%)|" .. v[sDisplayName] ..string.rep(" ", iSp4-string.len(v[sDisplayName])).."|Skill: " .. v["skill"]..string.rep(" ", iSp5-string.len(v["skill"])).." +"..v["levels"])
+					end
+				end
+			else
+				if bRecent == false then
+					bRecent = true
+					ColourNote(cText, "", "This week:")
+				end
+				if bDoNumbers == true then
+					ColourTell(cText, "", i..")"..string.rep(" ", string.len(tostring(#TeachTable))-string.len(tostring(i))))
+				end
+				ColourTell(cText, "", "["..string.format("%02d/%02d/%d",v["date_table"]["month"],v["date_table"]["day"],v["date_table"]["year"]))
+				if bShowTime == true then
+					ColourTell(cText, "",  string.format(string.rep(" ", 3-string.len(tostring(v["date_table"]["hour"]))).."%d:%02d:%02d",v["date_table"]["hour"],v["date_table"]["min"],v["date_table"]["sec"]))
+				end
+				ColourTell(cText, "",  "]")
+				if v["spent"] ~= 0 then
+					ColourNote(cText, "", "Spent: "..string.rep(" ", iSp1-string.len(AddCommas(v["spent"]))).. AddCommas(tonumber(v["spent"])) .. "|Gained: "..string.rep(" ", iSp2-string.len(AddCommas(v["gain"]))).. AddCommas(tonumber(v["gain"])).. string.rep(" ", iSp3-string.len(string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100)))).." ("..string.format("%.2f", tonumber(v["gain"])/(tonumber(v["spent"])/100)) .."%)|" .. v[sDisplayName] ..string.rep(" ", iSp4-string.len(v[sDisplayName])).."|Skill: " .. v["skill"]..string.rep(" ", iSp5-string.len(v["skill"])).." +"..v["levels"])
+				else
+					ColourNote(cText, "", "Spent: "..string.rep(" ", iSp1-string.len(AddCommas(v["spent"]))).. AddCommas(tonumber(v["spent"])) .. "|Gained: "..string.rep(" ", iSp2-string.len(AddCommas(v["gain"]))).. AddCommas(tonumber(v["gain"])).. string.rep(" ", iSp3-string.len("??.??")).." (??.??%)|" .. v[sDisplayName] ..string.rep(" ", iSp4-string.len(v[sDisplayName])).."|Skill: " .. v["skill"]..string.rep(" ", iSp5-string.len(v["skill"])).." +"..v["levels"])
+				end
+			end
+			--added to ignore manually added xp that does not know how much was spent
+			if v["spent"] ~= 0 then
+				iSpentTotal = iSpentTotal + v["spent"]
+				iGainTotal = iGainTotal + v["gain"]
+			else
+				iExtraGainTotal = iExtraGainTotal + v["spent"]
+			end
+		end
+		--ColourNote(cText, "", json.encode(TeachTable))
+		--the calc for percent ignores added teaches that do not know the gain
+		ColourNote(cText, "", "Total (" .. #TeachTable.. "): Spent: "  .. AddCommas(iSpentTotal) .."|Gained: " .. AddCommas(iGainTotal+iExtraGainTotal) .. " ("..string.format("%.2f", iGainTotal/(iSpentTotal/100)) .."%)") 
+	else
+		ColourNote(cText, "", "No recorded teaches, get teaching!")
+	end
+end
+
+TitleList = {
+"Miss", "Mr", "Mrs", "Ms", "Lonely", "Mournful", "Scary", "Spooky", "Wandering","Duelling", "Cheating", "Cowardly", "Doctor", "Dr", "Professor", "Brother", "Sister", "Mostly Reverend", "Reverend", "Blessed father", "Blessed mother", "Blessed brother", "Blessed sister", "Blessed", "Venerable brother", "Venerable sister", "Venerable father", "Venerable mother", "Venerable", "Holy brother", "Holy sister", "Holy", "Beatus", "Saint", "Butterfingers", "Crafty", "Crooked", "Dastardly", "Dishonest", "Dodgy", "Elusive", "Evasive", "Fingers", "Furtive", "Greased", "Honest", "Latent", "Light-fingered", "Quick-fingered", "Quiet", "Shady", "Shifty", "Silent", "Slick", "Sly", "Tricky", "Aunty", "Biddy", "Black", "Gammer", "Goodie", "Goody", "Gramma", "Granny", "Mama", "Mistress", "Mother", "Mss", "Nanna", "Nanny", "Sister", "Wee", "Wicked", "Young", "Fat", "Stuffed", "Over-fed", "Gimlet-eyed", "Robust", "Bearded", "Burly", "Plump", "Rotund", "Thin", "Tiny", "Mystic", "Obscure", "Complex", "Learned", "Potent", "Wise", "Grumpy", "Cryptic", "Dark", "Scholarly", "Grey-haired", "Greybeard", "Master", "Mistress", "Adroit", "Dire", "Maven", "Quantum", "Savant", "Unseen", "Archmaster", "Archmistress", "Archmage", "Dame", "Sir", "the Amazing", "the Civic-Minded", "the Elegant", "the Eloquent", "the Helpful", "the Helpful Citizen", "the Stylish", "the Upstanding Citizen", "the Utterly Fluffy", "the Wonderful", "appallingly filthy", "corpse looter", "dull", "feebleminded", "i got punished", "i got punished and all i got was this lousy title", "i promise i won't do it again", "insignificant", "lying", "malingering", "necrokleptomaniac", "offensive", "pillock", "pointless", "repentant", "reprobate", "shopkeeper murderer","silly spammy git", "sitting in the corner", "smelly", "tantrum thrower", "too stupid to live", "vagrant", "very sorry", "very very sorry", "waste of space", "whinging", "Sultan", "Sultana", "Shai al-khasa", "Sitt al-khasa", "Shai al-ri'asa", "Sitt al-ri'asa", "Shai ishquaraya", "Sitt ishquaraya", "Shai a'daha", "Sitt a'daha", "Nawab", "Qasar", "Mazrat", "Effendi", "Ya'uq", "Mutasharid", "Ishqaraya", "Kill Stealer", "Feebleminded", "Idiotic", "Offensive", "Corpse Looter", "Cat Hating", "Heathen", "Foreign Dog", "Infidel", "Shopkeeper Murderer", "Destitute", "Parasitic", "Hated", "Cowardly", "Criminal", "Felon", "M", "Mlle", "Mme", "Contender", "Venomous", "Ancient", "Exterminator", "Rouge", "Axe-master", "Champion", "Centurion", "Flatulent", "Competent", "Cultured", "Healer", "Cutthroat", "Knifey", "Archaic", "Lethal", "Elementalist", "Energetic", "Festive", "Gifted", "Chef", "Bloodthirsty", "Impaler", "Templar", "Paranoid", "Saintly", "Crusher", "Mysterious", "Arcana", "Diplomatic", "Duelist", "Perverse", "Masterful", "Fingers", "Medical", "Destined", "Unburiable", "Nasty", "Nimble", "Nurse", "Murse", "Obsolete", "Old Woman", "Old Man", "Old", "Crimewave", "Antiquated", "Fossilized", "Mythical", "Unlucky", "Pious", "Staffmistress", "Staffmaster", "Prehistoric", "Rock-hard", "Bruiser", "Pulveriser", "Literate", "Wealthy", "Senile", "Shieldmistress", "Shieldmaster", "Filthy", "Erratic Mechanic", "Legendary", "Swordmistress", "Swordmaster", "Terrible", "Ruinous", "Decrepit", "Headmistress", "Headmaster", "Multilingual", "Golden", "Unexpected", "Unstoppable", "Versatile", "Virtuoso", "Venerable", "Opulent", "Well travelled", "Persistent", "Debating", "Diplomatic", "Uncreative", "Her Eminence", "His Eminence", "Lord", "Lady", "Chunin", "around", "Duellist", "the ghost of", "ghost of", "the giant", "the", "Alim", "Darvish", "Mahir", "Sayyid", "Wadi", "Fateen", "Fudail", "Kareen", "Mujahid", "Murshid", "Asim", "Fedayeen", "Hussam", "Mukhtar", "Nasir", "Genin", "Jounin", "Chojin", "Karuma", "Osa", "Captain", "Stormrider"
+}
+	
+function TrimTitles(sName)
+	local sTrimName = sName
+	for i, v in ipairs (TitleList) do
+		--Tell(i..":"..v.."|")
+		if string.lower(v) .. " " == string.lower(string.sub(sTrimName, 1, string.len(v .. " "))) then
+			sTrimName = string.sub(sTrimName, string.len(v) + 2)
+			break
+		end
+	end
+	sTrimName = string.match(sTrimName, "(%w+)") or "Unknown"
+	--This one is more specific and allows only letters
+	--sTrimName = string.match(sTrimName, "^(%a+)$") or string.match(sTrimName, "^(%a+) ") or "Unknown"
+	return sTrimName
+end
+
+function FirstToUpper(str)
+    return (string.gsub(str, "^%l", string.upper))
+end
+
+]]>
+</script> 
+<!--  Aliases  -->
+<aliases>
+    <alias
+     match="^teach ?test$"
+     enabled="n"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="Test"
+    ></alias>
+    <alias
+     match="^teach ?remove (\d+)$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="RemoveTeach"
+    ></alias>
+    <alias
+     match="^teach ?(?:display|list)$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="ListTeach"
+    ></alias>
+    <alias
+     match="^teach ?(?:name) (?P<change>full|brief)$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="ChangeNameDisplay"
+    ></alias>
+    <alias
+     match="^teach ?(?:show) (?P<change>all|week|month)$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="ChangeTimeToShow"
+    ></alias>
+    <alias
+     match="^teach ?add xp (?P<gain>\d+)(?:, ?name (?P<fullname>.+))?(?:, ?(?:levels|lvls) (?P<levels>\d+))?(?:, ?skill (?P<skill>.+))?(?:, ?spent (?P<spent>\d+))?$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="ManualAddTeach"
+    ></alias>
+    <alias
+     match="^teach ?help$"
+     enabled="y"
+	 regexp="y"
+     ignore_case="y"
+     sequence="30"
+     script="TeachHelp"
+    ></alias>
+</aliases>
+<!--  Triggers  -->
+<triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^You gain (?P<gain>\d+) xp from teaching (?P<fullname>.+) (?P<levels>\d+) levels? of (?P<skill>.+) for (?P<spent>\d+) xp\.$"
+   regexp="y"
+   sequence="12"
+   script="AddTeach"
+   name="TeachGainMessage"
+  >
+  </trigger>
+</triggers>
+  
+</muclient>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- XPCommas, adds commmas to the xp number in monitor and score-brief, by Reva -->
+
+<muclient>
+<plugin
+   name="XPCommas"
+   author="Reva"
+   id="c5cdffa597a0f81ec95c4249"
+   language="Lua"
+   purpose="AddCommasToMonitorAndScorebrief"
+   date_written="2021-12-27"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<script>
+<![CDATA[
+--Add commas every 3 numbers to easier reading
+function AddCommas(n) -- credit http://richard.warburton.it
+	local left,num,right = string.match(n,'^([^%d]*%d)(%d*)(.-)$')
+	return left..(num:reverse():gsub('(%d%d%d)','%1,'):reverse())..right
+end
+
+function MonitorCapture(sName, sLine, wildcards, styles)
+	ColourNote(RGBColourToName(styles[1].textcolour), RGBColourToName(styles[1].backcolour), wildcards.beg .. AddCommas(tonumber(wildcards.xp)).. wildcards.ending)
+end
+]]>
+</script> 
+<!--  Triggers  -->
+<triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?P<beg>(?:> )?Hp: \d+ ?\(\d+\)  ?Gp: \d+ ?\(\d+\)  ?Xp: )(?P<xp>\d+)(?P<ending>  ?Burden: \d+\%)?$"
+   regexp="y"
+   sequence="4"
+   script="MonitorCapture"
+   omit_from_output="y"
+  >
+  </trigger>
+</triggers>
+</muclient>

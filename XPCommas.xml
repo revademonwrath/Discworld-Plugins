@@ -12,7 +12,7 @@
    purpose="AddCommasToMonitorAndScorebrief"
    date_written="2021-12-27"
    requires="4.84"
-   version="1.0"
+   version="1.1"
    >
 </plugin>
 <script>
@@ -24,7 +24,11 @@ function AddCommas(n) -- credit http://richard.warburton.it
 end
 
 function MonitorCapture(sName, sLine, wildcards, styles)
-	ColourNote(RGBColourToName(styles[1].textcolour), RGBColourToName(styles[1].backcolour), wildcards.beg .. AddCommas(tonumber(wildcards.xp)).. wildcards.ending)
+	local xp = string.match(sLine, "Xp: (%d+)")
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), tostring(string.gsub(v.text, "Xp: %d+", "Xp: " .. AddCommas(xp))))
+	end -- for
+	Note("")
 end
 ]]>
 </script> 

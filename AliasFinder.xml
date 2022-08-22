@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="iso-8859-1"?>
 <!DOCTYPE muclient>
 
-<!-- !Can use a bit of cleanup of old\not working parts! -->
 <!-- AliasFinder by Reva -->
 <!-- Searches aliases for specified text.. -->
 <!-- 'af help' to display help info. -->
@@ -408,6 +407,7 @@ function SafetyResetAll(sName)
 		sOldRows = "unknown"
 	end
 	EnableTrigger("FindText", false)
+	EnableTrigger("FindTextII", false)
 	EnableTrigger("StartAliasLine", false)
 	EnableTrigger("GagQueuedCommands", false)
 	DeleteTimer ("SafetyGagRemoval")
@@ -425,9 +425,9 @@ end
 	--SetTriggerOption ("FindText", "sequence", 1)
 	--SetTriggerOption ("FindText", "repeat", "y")
 	--Change colour of match, looks like a workaround, but this is the only way I've found to do it
-	SetTriggerOption ("FindText", "custom_colour", tostring(17))
-	SetTriggerOption ("FindText", "other_text_colour", ColourNameToRGB(HighlightTextColour))
-	SetTriggerOption ("FindText", "other_back_colour", ColourNameToRGB(HighlightBGColour))
+	--SetTriggerOption ("FindText", "custom_colour", tostring(17))
+	--SetTriggerOption ("FindText", "other_text_colour", ColourNameToRGB(HighlightTextColour))
+	--SetTriggerOption ("FindText", "other_back_colour", ColourNameToRGB(HighlightBGColour))
 	--SetTriggerOption ("FindText", "group", "All")
 --[[
 <triggers>

@@ -489,7 +489,6 @@ end
 </aliases>
 <!--  Triggers  -->
 <triggers> 
-
   <trigger
    enabled="n"
    custom_colour="17"
@@ -502,7 +501,6 @@ end
    name="FindText"
    script="FoundMatch"  
    other_text_colour="black"
-   
    other_back_colour="yellow"
   >
   </trigger>

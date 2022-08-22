@@ -1,13 +1,31 @@
 <?xml version="1.0" encoding="iso-8859-1"?>
 <!DOCTYPE muclient>
 
+<!-- !Can use a bit of cleanup of old\not working parts! -->
 <!-- AliasFinder by Reva -->
 <!-- Searches aliases for specified text.. -->
 <!-- 'af help' to display help info. -->
 <!-- 'af <text>' to search. -->
 <!-- 'af full <text>' to display full alias list with selected text highlighted. -->
+<!-- 'V2 - a few bugfixes. -->
+<!-- 'V2 - fixed search with regexp matches or spaces. -->
+<!-- 'V2 - fixed to highligh multiple entries on same line. -->
+<!-- 'V2 - fixed count of correct matches. -->
 
 <muclient>
+<plugin
+   name="AliasFinder"
+   author="Reva"
+   id="ae3eb0987546eda429c562c4"
+   language="Lua"
+   purpose="Search Alias List"
+   date_written="2018-04-04"
+   date_modified="2022-08-22"
+   requires="4.84"
+   version="2.0"
+   >
+</plugin>
+
 <script>
 <![CDATA[
 
@@ -33,6 +51,7 @@ bIgnoredLine = false
 --------------------------------------------------------------------------------
 require "serialize"  -- needed to serialize table to string
 
+--[[
 --Changed to happen when entering to be more accurate
 function OnPluginInstall ()
 end -- function OnPluginInstall
@@ -48,41 +67,79 @@ function OnPluginSaveState ()
 		if Debug == true then Note("Saved.") end
 	end
 end -- function OnPluginSaveState
+]]--
 
 function AFHelp (sName, sLine, wildcards)
 	Note("")
-	ColourNote(NoteTextColour, NoteTextBGColour, "'af help' - this help screen.")
-	ColourNote(NoteTextColour, NoteTextBGColour, "'af <text>' to display only aliases with selected text.")
-	ColourNote(NoteTextColour, NoteTextBGColour, "'af full <text>' to display full alias list with selected text highlighted.")
-	ColourNote(NoteTextColour, NoteTextBGColour, "The search is NOT case sensitive.")	
-	ColourNote(NoteTextColour, NoteTextBGColour, "NOTE: To search for the word 'help' or 'full ' use 'af !help' or 'af !full '.")
+	ColourNote(NoteTextColour, "", "'af help' - this help screen.")
+	ColourNote(NoteTextColour, "", "'af <text>' to display only aliases with selected text.")
+	ColourNote(NoteTextColour, "", "'af full <text>' to display full alias list with selected text highlighted.")
+	ColourNote(NoteTextColour, "", "The search is NOT case sensitive.")	
+	ColourNote(NoteTextColour, "", "NOTE: To search for the word 'help' or 'full ' use 'af !help' or 'af !full '.")
 	Note("")
 end
 
+
+
+--[[
+trigger with variable
+disable trigger after 30 seconds with timer
+trigger turn on with start of alias list
+trigger turn off with end of alias list
+
+]]--
 Searches = {}
-function FindAlias (sName, sLine, wildcards)
-	if wildcards.key == nil or wildcards.key == "" then
-		ColourNote(NoteTextColour, NoteTextBGColour, "Alias Finder: enter text for search, ex: 'af <text>'.")
-		return
+
+--[[
+function NewSearch (sName, sLine, wildcards)
+	SetVariable("alias_pattern", wildcards.key)
+	if Debug then
+		Note("Pattern to highligh = '" .. GetVariable("alias_pattern") .. "'.")
 	end
 
-	SearchKey = wildcards.key
+	SendNoEcho("alias")
+end
+	SetVariable("alias_pattern", "Spice")
+]]--
+function FindAlias (sName, sLine, wildcards)
+	if wildcards.key == nil or wildcards.key == "" then
+		ColourNote(NoteTextColour, "", "Alias Finder: enter text for search, ex: 'af <text>'.")
+		return
+	end
 	
+	SearchKey = wildcards.key
+	--SetVariable("alias_pattern", wildcards.key)
+	
+	if Debug == true then
+		Note("Search key is '"..SearchKey .. "'.")
+	end
+
 	--Default is only results
 	DisplayOnlyResults = true
 	if (string.sub(SearchKey, 1, 5) == "full ") then
-		--ColourNote(NoteTextColour, NoteTextBGColour, "Alias Finder: displaying full alias list.")
+		--ColourNote(NoteTextColour, "", "Alias Finder: displaying full alias list.")
 		DisplayOnlyResults = false
 		SearchKey = string.sub(SearchKey, 6) 
 	end
 	
 	--Two corrections for escaped searches
+	if (string.sub(SearchKey, 1, 5) == "!help") then
+		SearchKey = "help" .. string.sub(SearchKey, 6)
+	elseif (string.sub(SearchKey, 1, 5) == "!full") then
+		SearchKey = "full" .. string.sub(SearchKey, 6)
+	end
+	
+	if Debug then
+		Note("SearchKey modified to '"..SearchKey.."'.")
+	end
+--[[
+
 	if SearchKey == "!help" then
 		SearchKey = "help"
 	elseif SearchKey == "!full " then
 		SearchKey = "full "
 	end
-
+]]--
 	--This is done later
 	--bMatched = false
 	--iMatchedCount = 0
@@ -99,14 +156,22 @@ function FindAlias (sName, sLine, wildcards)
 		AddTimer ("SafetyGagRemoval", 0, 0, 30, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "UnGagTimer")
 		--If this is the first search, make sure the player does not have to press enter as we are gagging everything
 		--This will be changed back afterwards, I hope you don't have more than half a million rows of aliases
-		if #Searches == 1 then
-			EnableTrigger("CaptureOldRows", true)
-			SendNoEcho("rows 500000")
-			SendNoEcho("alias")
-		end
-	else
-		Send("alias")
+		--if #Searches == 1 then
+			--EnableTrigger("CaptureOldRows", true)
+			--SendNoEcho("rows 500000")
+			--SendNoEcho("alias")
+		--end
+	--else
+		--Send("alias")
 	end
+
+	--moved outside of if, we want this even if we are displaying results
+	if #Searches == 1 then
+		EnableTrigger("CaptureOldRows", true)
+		SendNoEcho("rows 500000")
+		SendNoEcho("alias")
+	end
+
 	--Safety to undo everything in case commands do not go through (unconscious, flying, etc)
 	AddTimer ("SafetyReset", 0, 0, 35, "", timer_flag.Enabled + timer_flag.Replace + timer_flag.Temporary + timer_flag.OneShot, "SafetyResetAll")	
 end
@@ -154,9 +219,13 @@ function StartAliases (sName, sLine, wildcards, styles)
 		end -- for
 		Note("")
 	end
+
+	--set variable for colour trigger
+	--SetVariable("var_find", SearchKey)
+	SetVariable("alias_pattern", SearchKey)
+
 	--Create colour trigger to match the text
 	--AddTrigger("FindText"..SearchKey, SearchKey, "", trigger_flag.Enabled + trigger_flag.RegularExpression + trigger_flag.KeepEvaluating + trigger_flag.IgnoreCase, -1, 0, "", "FoundMatch")
-	SetVariable("var_find", SearchKey)
 	--Repeat on same line
 	--SetTriggerOption ("FindText"..SearchKey, "sequence", 1)
 	--SetTriggerOption ("FindText"..SearchKey, "repeat", "y")
@@ -168,15 +237,21 @@ function StartAliases (sName, sLine, wildcards, styles)
 
 end
 
+function CountMatches (sName, sLine, wildcards, styles)
+--	bMatched = true
+--	iMatchedCount = iMatchedCount + 1
+end
+
 function FoundMatch (sName, sLine, wildcards, styles)
+	--SearchKey = GetVariable("alias_pattern")
 	if Debug == true then
 		Note("Found match! Keyword: " .. SearchKey)
 		--Note("sName: " .. sName)
 		--Note("sLine: " .. sLine)
 	end
 	if DisplayOnlyResults == true and bMatched == false then
-		ColourNote(NoteTextColour, NoteTextBGColour, "** MATCH(ES) FOR '" .. SearchKey .. "':")
-		ColourNote(NoteTextColour, NoteTextBGColour, "-----------------" .. string.rep("-",  string.len(SearchKey)) .. "-")
+		ColourNote(NoteTextColour, "", "** MATCH(ES) FOR '" .. SearchKey .. "':")
+		ColourNote(NoteTextColour, "", "-----------------" .. string.rep("-",  string.len(SearchKey)) .. "-")
 	end
 
 	--Lets put back the category if we have a match in it
@@ -184,10 +259,10 @@ function FoundMatch (sName, sLine, wildcards, styles)
 	if bIgnoredLine == true then
 		for _, v in ipairs (IgnoredLine) do
 			if bFirstTime == false then
-				ColourTell(NoteTextColour, NoteTextBGColour, "* ")
+				ColourTell(NoteTextColour, "", "* ")
 				bFirstTime = true
 			end
-			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+			ColourTell (RGBColourToName (v.textcolour), "", v.text)
 		end -- for
 		Note("")
 		bIgnoredLine = false
@@ -195,14 +270,22 @@ function FoundMatch (sName, sLine, wildcards, styles)
 	
 	bMatched = true
 	--Fixed to count multiple matches on one line
-	for _ in string.gmatch(string.lower(sLine), string.lower(SearchKey)) do iMatchedCount = iMatchedCount + 1 end
+	--for _ in string.gmatch(string.lower(sLine), string.lower(SearchKey)) do iMatchedCount = iMatchedCount + 1 end
 	--iMatchedCount = iMatchedCount + 1
+	
+	re = rex.new (GetVariable("alias_pattern"))
+	iNewMatches = re:gmatch (sLine, function (m, t) end )
+	iMatchedCount = iMatchedCount + iNewMatches
+	
+	if Debug then
+		Note ("# of matches: " .. n) --> 3
+	end
 
 	local bFirstTime = false
 	if DisplayOnlyResults == true then
 		for _, v in ipairs (styles) do
 			if bFirstTime == false then
-				ColourTell(NoteTextColour, NoteTextBGColour, "* ")
+				ColourTell(NoteTextColour, "", "* ")
 				bFirstTime = true
 			end
 			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
@@ -214,17 +297,18 @@ end
 function EndAliases (sName, sLine, wildcards)
 	if Debug == true then Note("Detected end of aliases.") end
 	EnableTrigger("FindText", false)
+	EnableTrigger("FindTextII", false)
 	if DisplayOnlyResults == true and bMatched == true then
-		ColourTell(NoteTextColour, NoteTextBGColour, "** END OF RESULTS FOR '" .. SearchKey .. "'. " )
+		ColourTell(NoteTextColour, "", "** END OF RESULTS FOR '" .. SearchKey .. "'. " )
 	end
 	if bMatched == true then
 		if iMatchedCount == 1 then
-			ColourNote(NoteTextColour, NoteTextBGColour, "(" .. iMatchedCount .. " match)")
+			ColourNote(NoteTextColour, "", "(" .. iMatchedCount .. " match)")
 		else
-			ColourNote(NoteTextColour, NoteTextBGColour, "(" .. iMatchedCount .. " matches)")
+			ColourNote(NoteTextColour, "", "(" .. iMatchedCount .. " matches)")
 		end
 	else
-		ColourNote(NoteTextColour, NoteTextBGColour, "** NO MATCH FOUND FOR '" .. SearchKey .. "'!")
+		ColourNote(NoteTextColour, "", "** NO MATCH FOUND FOR '" .. SearchKey .. "'!")
 	end
 	EnableTrigger("IgnoreAliasLine", false)		
 	--Stop blocking output, not iffed for safety measures
@@ -245,7 +329,7 @@ function EndAliases (sName, sLine, wildcards)
 		if sOldRows ~= "unknown" and sOldRows ~= "500000" then
 			--SendNoEcho("rows " .. sOldRows)
 			Note("")
-			ColourNote("red", "black", "WARNING!!! 'Rows' was changed from " .. sOldRows .. ", type 'rows " .. sOldRows .. "' to change it back.") 
+			ColourNote("red", "", "WARNING!!! 'Rows' was changed from " .. sOldRows .. ", type 'rows " .. sOldRows .. "' to change it back.") 
 			Note("")
 			sOldRows = "unknown"
 		--If not we are not sending more commands, so we can turn this off
@@ -263,6 +347,8 @@ function CaptureOldRows (sName, sLine, wildcards)
 	--Find out what this setting was
 	sOldRows = wildcards.old_rows
 	--EnableTrigger("CaptureNewRows", true)
+	EnableTrigger("FindText", true)
+	EnableTrigger("FindTextII", true)
 end
 
 function CaptureNewRows (sName, sLine, wildcards)
@@ -343,26 +429,45 @@ end
 	SetTriggerOption ("FindText", "other_text_colour", ColourNameToRGB(HighlightTextColour))
 	SetTriggerOption ("FindText", "other_back_colour", ColourNameToRGB(HighlightBGColour))
 	--SetTriggerOption ("FindText", "group", "All")
+--[[
+<triggers>
+  <trigger
+   custom_colour="17"
+   colour_change_type="1"
+   enabled="y"
+   group="kill"
+   keep_evaluating="y"
+   match="^(?:&gt; )?You kill (.*)\.$"
+   name="you"
+   regexp="y"
+   sequence="100"
+   other_text_colour="forestgreen"
+   other_back_colour="white"
+  >
+  </trigger>
+</triggers>
+<triggers>
+  <trigger
+   custom_colour="5"
+   colour_change_type="1"
+   group="ColourNPCs"
+   keep_evaluating="y"
+   match="hoplite|citadel guard|smuggler"
+   name="EphebeNPCs"
+   regexp="y"
+   repeat="y"
+   sequence="50"
+  >
+  </trigger>
+</triggers>
 
+]]--
 ]]>
 </script> 
-<plugin
-   name="AliasFinder"
-   author="Reva"
-   id="ae3eb0987546eda429c562c4"
-   language="Lua"
-   purpose="Search Alias List"
-   date_written="2018-04-04"
-   date_modified="2018-04-11"
-   requires="4.84"
-   version="1.0"
-   >
-</plugin>
-
 <!--  Aliases  -->
 <aliases>
   <alias
-   match="^af (?<key>.*)?"
+   match="^af(?: (?P<key>.*))?"
    enabled="y"
    regexp="y"
    ignore_case="y"
@@ -381,19 +486,39 @@ end
    name="DisplayHelp"
   > 
   </alias>
-
 </aliases>
 <!--  Triggers  -->
 <triggers> 
+
   <trigger
    enabled="n"
+   custom_colour="17"
+   colour_change_type="2"
    ignore_case="y"
+   keep_evaluating="y"
    expand_variables="y"
-   match="(@!var_find)"
+   match="(@!alias_pattern)"
    regexp="y"
    sequence="100"
    name="FindText"
    script="FoundMatch"   
+   other_back_colour="yellow"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   custom_colour="17"
+   colour_change_type="2"
+   ignore_case="y"
+   keep_evaluating="y"
+   expand_variables="y"
+   match="(@!alias_pattern)"
+   regexp="y"
+   sequence="100"
+   repeat="y"
+   name="FindTextII"
+   other_back_colour="yellow"
+   script="CountMatches"   
   >
   </trigger>
   <trigger

@@ -493,7 +493,6 @@ end
   <trigger
    enabled="n"
    custom_colour="17"
-   colour_change_type="2"
    ignore_case="y"
    keep_evaluating="y"
    expand_variables="y"
@@ -501,14 +500,15 @@ end
    regexp="y"
    sequence="100"
    name="FindText"
-   script="FoundMatch"   
+   script="FoundMatch"  
+   other_text_colour="black"
+   
    other_back_colour="yellow"
   >
   </trigger>
   <trigger
    enabled="n"
    custom_colour="17"
-   colour_change_type="2"
    ignore_case="y"
    keep_evaluating="y"
    expand_variables="y"
@@ -517,6 +517,7 @@ end
    sequence="100"
    repeat="y"
    name="FindTextII"
+   other_text_colour="black"
    other_back_colour="yellow"
    script="CountMatches"   
   >

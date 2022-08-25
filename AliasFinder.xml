@@ -429,45 +429,12 @@ end
 	--SetTriggerOption ("FindText", "other_text_colour", ColourNameToRGB(HighlightTextColour))
 	--SetTriggerOption ("FindText", "other_back_colour", ColourNameToRGB(HighlightBGColour))
 	--SetTriggerOption ("FindText", "group", "All")
---[[
-<triggers>
-  <trigger
-   custom_colour="17"
-   colour_change_type="1"
-   enabled="y"
-   group="kill"
-   keep_evaluating="y"
-   match="^(?:&gt; )?You kill (.*)\.$"
-   name="you"
-   regexp="y"
-   sequence="100"
-   other_text_colour="forestgreen"
-   other_back_colour="white"
-  >
-  </trigger>
-</triggers>
-<triggers>
-  <trigger
-   custom_colour="5"
-   colour_change_type="1"
-   group="ColourNPCs"
-   keep_evaluating="y"
-   match="hoplite|citadel guard|smuggler"
-   name="EphebeNPCs"
-   regexp="y"
-   repeat="y"
-   sequence="50"
-  >
-  </trigger>
-</triggers>
-
-]]--
 ]]>
 </script> 
 <!--  Aliases  -->
 <aliases>
   <alias
-   match="^af(?: (?P<key>.*))?"
+   match="^af(?: (?P<key>.*))?$"
    enabled="y"
    regexp="y"
    ignore_case="y"

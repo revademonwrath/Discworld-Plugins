@@ -1,0 +1,1304 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- Mission Completion Timers for AM Job Market and Post Office Missions, by Quow -->
+<!-- Type "missions" to list any current mission-completion timers stored by the plugin -->
+<!-- Type "missions all" to list all missions including ones you can currently get a full reward for -->
+<!-- If you want to change the command name to something else, edit the "alias" below -->
+<!-- Note:  In Mushclient, check File->World Properties->General->Timers, tick "Enable Timers" at bottom. -->
+
+<!-- Wiki page for Missions:   https://dwwiki.mooo.com/wiki/Missions  -->
+<!-- Research on some missions:  https://dwwiki.mooo.com/wiki/Research:Ankh-Morpork_Job_Market  -->
+<!-- Dead Letter recipients:  https://dwwiki.mooo.com/wiki/Dead_letter_office_jobs  -->
+
+<muclient>
+<plugin
+   name="QuowMissions"
+   author="Quow"
+   id="bee25344e014945bb3c562c4"
+   language="Lua"
+   purpose="Mission Assistant"
+   date_written="2016-09-29"
+   date_modified="2023-05-24"
+   save_state="y"
+   requires="4.84"
+   version="1.13"
+   >
+</plugin>
+<!--  Aliases  -->
+<aliases>
+  <!-- Alias to catch what dead letter you offer to deliver -->
+  <alias
+   match="^revaaddtimers$"
+   enabled="n"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   script="RevaAddTimers"
+  > 
+  </alias>
+  <!-- If Discworld adds a "missions" command in the future, change this alias to another command to show timers -->
+  <alias
+   match="missions"
+   enabled="y"
+   ignore_case="y"
+   sequence="30"
+   script="QuowMissionTimers"
+   name="ShowActiveTimers"
+  > 
+  </alias>
+  <!-- If Discworld adds a "missions" command in the future, change this alias to another command to show all possible not-doing missions -->
+  <alias
+   match="^missions (.+)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="QuowMissionTimers"
+   name="ShowAllTimers"
+  > 
+  </alias>
+  <!-- Alias to catch what dead letter you offer to deliver -->
+  <alias
+   match="^offer to deliver (D[A-Z]{2})$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   script="QuowOfferLetterDelivery"
+  > 
+  </alias>
+  <!-- Alias to catch what jobs you are applying for -->
+  <alias
+   match="^apply for(?: job){0,1} ([A-Z]{2})$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   script="QuowJobMarketApply"
+  > 
+  </alias>
+  <!-- Alias to catch resigning from dead letter missions -->
+  <alias
+   match="return letter"
+   enabled="y"
+   ignore_case="y"
+   sequence="5"
+   script="QuowLetterReturn"
+  > 
+  </alias>
+  <!-- Alias to catch resigning from job market job -->
+  <alias
+   match="^(resign job|resign from job|resign current job|resign from current job)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   script="QuowJobMarketResign"
+  > 
+  </alias>
+
+</aliases>
+<script>
+<![CDATA[
+-- Set this to "false" if you do not want notification texts 60 minutes after completing a mission, and reload the plugin
+bNotificationTimers = true
+
+-- Check if the user has timers setting enabled or not
+if (GetCurrentValue("enable_timers") ~= 1) then
+  Note("")
+  ColourNote("red", "", "Mission Helper Warning:")
+  ColourNote("orange", "", "Your timers in Mushclient are disabled!")
+  Note("This means none of the timers needed for this plugin to work can run.")
+  Note("To enable timers, in Mushclient menus go to File->World Properties->General->Timers, tick 'Enable Timers' on this page, then click 'OK'")
+  Note("")
+end
+
+-- Check if the user has aliases enabled or not
+if (GetCurrentValue("enable_aliases") ~= 1) then
+  Note("")
+  ColourNote("red", "", "Mission Helper Warning:")
+  ColourNote("orange", "", "Your aliases in Mushclient are disabled!")
+  Note("This means you will not be able to use the 'missions' command added by the plugin.")
+  Note("To enable aliases, in Mushclient menus go to File->World Properties->Input->Aliases, tick 'Enable Aliases' on this page, then click 'OK'")
+  Note("")
+end
+
+-- Table for job market timers and ID's
+sJobMarketMissions = {
+  -- Easy
+  ["Thirst Quencher"] = {"JMTimer1", "XX"},
+  ["Dog Walker"] = {"JMTimer2", "XX"},
+  ["Advertising Manager"] = {"JMTimer3", "XX"},
+  ["Gofer"] = {"JMTimer4", "XX"},
+  -- Medium
+  ["Street Fixer"] = {"JMTimer5", "XX"},
+  ["Sett Maker"] = {"JMTimer6", "XX"},
+  ["Delivery Lackey"] = {"JMTimer7", "XX"},
+  ["Delivery Runner"] = {"JMTimer8", "XX"},
+  ["Full-time Street Repairer"] = {"JMTimer9", "XX"},
+  ["Textiles Fixer"] = {"JMTimer10", "XX"},
+  -- Hard
+  ["Expert Street Maintenance Technician"] = {"JMTimer11", "XX"},
+  ["Deliverer of Rare Items"] = {"JMTimer12", "XX"},
+  ["Deliverer of Foreign Goods"] = {"JMTimer13", "XX"},
+}
+
+-- Types of letter delivery and their codes
+sLetterTypes = {
+  ["DLA"] = "DLA (close by; smudged)",
+  ["DLB"] = "DLB (close by; handwriting)",
+  ["DLC"] = "DLC (close by; vague)",
+  ["DLD"] = "DLD (close by; city)",
+  ["DLE"] = "DLE (far away; smudged)",
+  ["DLF"] = "DLF (far away; handwriting)",
+  ["DLG"] = "DLG (far away; vague)",
+  ["DLH"] = "DLH (far away; city)",
+  ["DLI"] = "DLI (difficult customer)",
+}
+
+-- Show the helpfile for the missions command
+function QuowMissionsHelp (sName, sLine, wildcards)
+  ColourNote("darkorange", "", "Quow's Missions & Job Timers Plugin Helpfile:")
+  ColourNote("silver", "",     "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=")
+
+  ColourTell("silver", "",     "'")
+  ColourTell("darkorange", "", "missions help")
+  ColourNote("silver", "",     "'                    :  This help information")
+
+  ColourTell("silver", "",     "'")
+  ColourTell("darkorange", "", "missions version")
+  ColourNote("silver", "",     "'                 :  Missions plugin version info")
+
+  ColourTell("silver", "",     "'")
+  ColourTell("darkorange", "", "missions jobalias <aliasname>")
+  ColourNote("silver", "",     "'    :  Tell the plugin your alias name for applying for AM Job Market missions.")
+  if (sJobAlias ~= nil and sJobAlias ~= "") then
+    ColourNote("silver", "", "                                      (currently set to '" .. sJobAlias .. " <code>')")
+  end
+
+  ColourTell("silver", "",     "'")
+  ColourTell("darkorange", "", "missions letteralias <aliasname>")
+  ColourNote("silver", "",     "' :  Tell the plugin your alias name for offering to deliver dead letters.")
+  if (sLetterAlias ~= nil and sLetterAlias ~= "") then
+    ColourNote("silver", "", "                                      (currently set to '" .. sLetterAlias .. " <code>')")
+  end
+
+  ColourTell("silver", "",     "'")
+  ColourTell("darkorange", "", "missions <alt name>")
+  ColourNote("silver", "",     "'              :  Show any active mission timers on an alt of yours.")
+
+  ColourTell("silver", "",     "'")
+  ColourTell("darkorange", "", "missions all")
+  ColourNote("silver", "",     "'                     :  List timers for all missions supported by the plugin, ongoing or not.")
+
+  ColourTell("silver", "",     "'")
+  ColourTell("darkorange", "", "missions")
+  ColourNote("silver", "",     "'                         :  List any active mission timers for your current character.")
+end
+
+-- Maintain an alt list if used in conjunction with CowBar 3.0+
+sCurrentCharacter = "NoName"
+-- See if we can forcefully find out who we are on plugin-load
+if (PluginSupports("bfe35205f026786ea1d56e3b", "CheckCharacterName") == 0) then
+  iReturnCode, sCurrentCharacter = CallPlugin ("bfe35205f026786ea1d56e3b", "CheckCharacterName", "")
+end
+if (sCurrentCharacter == nil or sCurrentCharacter == "") then
+  sCurrentCharacter = "NoName"
+end
+
+sSeenCharacters = {}
+function CharacterSwitch(sThisCharacterName)
+  sCurrentCharacter = sThisCharacterName
+  if (sCurrentCharacter == nil or sCurrentCharacter == "") then
+    sCurrentCharacter = "NoName"
+  end
+  sSeenCharacters[string.lower(sCurrentCharacter)] = sCurrentCharacter
+end
+
+-- Function for showing time left on missions
+function QuowMissionTimers (sName, sLine, wildcards)
+  local iSecondsToGo, iSecond, iMinute, bAnyTimers, bShowAllTimers, sShowCharacter, sYouName, sYourName = 0, 0, 0, false, false, sCurrentCharacter, "You", "Your"
+  if (wildcards ~= nil and wildcards[1] ~= nil) then
+    -- There is a parameter, check for letteralias, jobalias, and all
+    if (string.lower(wildcards[1]) == "all") then
+      -- Show all timers
+      bShowAllTimers = true
+    elseif (string.lower(wildcards[1]) == "help") then
+      QuowMissionsHelp()
+      return
+
+    elseif (string.lower(wildcards[1]) == "version") then
+      ColourNote("darkorange", "", "Quow's Mission Helper Plugin is on version: " .. tostring(GetPluginInfo("bee25344e014945bb3c562c4", 19)) .. "  [" .. os.date("%d %b %Y", GetPluginInfo("bee25344e014945bb3c562c4", 14)) .. "]")
+      return
+
+    elseif (string.lower(string.sub(wildcards[1], 1, 9)) == "jobalias ") then
+      -- Add a special jobalias for applications
+      local sNewAlias = string.lower(string.sub(wildcards[1], 10))
+      if (sNewAlias ~= nil and sNewAlias ~= "") then
+        AddAlias("JobAlias", "^" .. sNewAlias .. " ([A-Z]{2})$", "", 1185, "QuowJobMarketApply")
+        SetVariable("sJobAlias", sNewAlias)
+        ColourNote ("orange", "", "You have set an alias; '" .. sNewAlias .. " <jobcode>' for applying for AM Job Market jobs.")
+        sJobAlias = sNewAlias
+      end
+      return
+    elseif (string.lower(string.sub(wildcards[1], 1, 12)) == "letteralias ") then
+      -- Add a special letteralias for applications
+      local sNewAlias = string.lower(string.sub(wildcards[1], 13))
+      if (sNewAlias ~= nil and sNewAlias ~= "") then
+        AddAlias("LetterAlias", "^" .. sNewAlias .. " (D[A-Z]{2})$", "", 1185, "QuowOfferLetterDelivery")
+        SetVariable("sLetterAlias", sNewAlias)
+        ColourNote ("orange", "", "You have set an alias; '" .. sNewAlias .. " <lettercode>' for applying for Dead Letter missions.")
+        sLetterAlias = sNewAlias
+      end
+      return
+    else
+      -- It's not all, is it for an alt?
+      sShowCharacter = wildcards[1]
+      if (sSeenCharacters[string.lower(sShowCharacter)] ~= nil) then
+        sShowCharacter = sSeenCharacters[string.lower(sShowCharacter)]
+        sYouName = sSeenCharacters[string.lower(sShowCharacter)]
+        sYourName = sSeenCharacters[string.lower(sShowCharacter)]
+      else
+        Note("Quow's mission timer has not seen you su to an alt named '" .. sShowCharacter .. "' and do any missions.  Defaulting to showing missions for: " .. sCurrentCharacter)
+        sShowCharacter = sCurrentCharacter
+      end
+    end
+  end
+  if (sShowCharacter ~= "NoName") then
+    ColourNote("orangered", "", "Showing mission timers for character '" .. sShowCharacter .. "':")
+  end
+  if (IsTimer("GenuaFurniture_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("GenuaFurniture_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYourName .. " Jone Raynalds Genua Furniture mission timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  elseif (bShowAllTimers == true) then
+    ColourNote ("silver", "", sYouName .. " can start a new Jone Raynalds Genua Furniture mission now.")
+    bAnyTimers = true
+  end
+  if (IsTimer("StoLatPottery_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("StoLatPottery_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYourName .. " Ozzie Guntram Pottery reward timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  elseif (bShowAllTimers == true) then
+    ColourNote ("silver", "", sYouName .. " can complete an Ozzie Guntram Pottery mission now.")
+    bAnyTimers = true
+  end
+  if (IsTimer("OCPennieLaced_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("OCPennieLaced_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYourName .. " Pennie Laced in OC reward timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  elseif (bShowAllTimers == true) then
+    ColourNote ("silver", "", sYouName .. " can complete a Pennie Laced in OC mission now.")
+    bAnyTimers = true
+  end
+  if (IsTimer("Photograph_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("Photograph_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYourName .. " Theodor Hackett Photograph reward timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  elseif (bShowAllTimers == true) then
+    ColourNote ("silver", "", sYouName .. " can complete a Theodor Hackett Photograph mission now.")
+    bAnyTimers = true
+  end
+  if (IsTimer("BPFamilyMission_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("BPFamilyMission_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYourName .. " BP Family Mission start timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  elseif (bShowAllTimers == true) then
+    ColourNote ("silver", "", sYouName .. " can start a new BP Family Mission in BP now.")
+    bAnyTimers = true
+  end
+  if (IsTimer("JobMarketApply_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("JobMarketApply_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYouName .. " can apply for a new Job Market mission in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  end
+  -- Job market mission timers
+  for sKey, sJobEntry in pairs(sJobMarketMissions) do
+    if (IsTimer(sJobEntry[1] .. "_" .. sShowCharacter) == 0) then
+      iSecondsToGo = tonumber(GetTimerInfo(sJobEntry[1] .. "_" .. sShowCharacter, 13))
+      iMinute = math.floor(iSecondsToGo / 60)
+      iSecond = (iSecondsToGo - (iMinute * 60))
+      ColourNote ("orange", "", "Reward timer for Job Market mission '" .. sKey .. "' resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+      bAnyTimers = true
+    elseif (bShowAllTimers == true) then
+      ColourNote ("silver", "", sYouName .. " can complete Job Market mission '" .. sKey .. "' now.")
+      bAnyTimers = true
+    end
+  end
+  if (IsTimer("DeadLetterReturn_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("DeadLetterReturn_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYouName .. " can get a new dead-letter from Frank in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  end
+
+  for sThisLetterType, sThisLetterName in pairs(sLetterTypes) do
+    if (IsTimer("DeadLetter" .. sThisLetterType .. "_" .. sShowCharacter) == 0) then
+      iSecondsToGo = tonumber(GetTimerInfo("DeadLetter" .. sThisLetterType .. "_" .. sShowCharacter, 13))
+      iMinute = math.floor(iSecondsToGo / 60)
+      iSecond = (iSecondsToGo - (iMinute * 60))
+      ColourNote ("orange", "", sYourName .. " " .. sThisLetterName .. " dead-letter timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+      bAnyTimers = true
+    elseif (bShowAllTimers == true) then
+      ColourNote ("silver", "", sYouName .. " can complete a " .. sThisLetterName .. " dead-letter now.")
+      bAnyTimers = true
+    end
+  end
+  if (IsTimer("SausageRetry_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("SausageRetry_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYouName .. " can get a new sausage mission from Sam Slager in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  end
+  if (IsTimer("SausageEasy_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("SausageEasy_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYourName .. " EASY Sam Slager sausage mission timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  elseif (bShowAllTimers == true) then
+    ColourNote ("silver", "", sYouName .. " can complete an EASY Sam Slager sausage mission now.")
+    bAnyTimers = true
+  end
+  if (IsTimer("SausageHard_" .. sShowCharacter) == 0) then
+    iSecondsToGo = tonumber(GetTimerInfo("SausageHard_" .. sShowCharacter, 13))
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+    ColourNote ("orange", "", sYourName .. " HARD herbal Sam Slager sausage mission timer resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+    bAnyTimers = true
+  elseif (bShowAllTimers == true) then
+    ColourNote ("silver", "", sYouName .. " can complete a HARD herbal Sam Slager sausage mission now.")
+    bAnyTimers = true
+  end
+  if (bAnyTimers == false) then
+    ColourNote("orange", "", "No mission related timers currently counting down for " .. string.lower(sYouName) .. ".")
+  end
+end
+
+-- AM Job Market mission timed out because you didn't complete it in time, do we need to do anything?
+function QuowJobMarketimeout(sName, sLine, wildcards)
+  -- Remove any timers??
+end
+
+iResignations = 0
+iLastResignation = 0
+-- AM Job Market resign
+function QuowJobMarketResign(sName, sLine, wildcards)
+  Send(sLine)
+  -- Reset resignations to 0 if it's been more than 60 minutes since we last saw a resignation
+  if (iResignations > 0 and ((os.time() - iLastResignation) > 3600)) then
+    iResignations = 0
+  end
+  iLastResignation = os.time()
+  AddTimer ("JobMarketApply_" .. sCurrentCharacter, 0, 10 + (iResignations * 5), 0, "", 1061, "QuowJobMarketReApply")
+  iResignations = iResignations + 1
+end
+
+-- Complete a family mission in BP, 30 mins timer to get a new one
+function QuowBPFamilyComplete(sName, sLine, wildcards)
+  AddTimer ("BPFamilyMission_" .. sCurrentCharacter, 0, 30, 0, "", 1061, "QuowMissionNotify")
+end
+
+
+-- See a reward line for (partially or fully) completing an AM job market mission
+function QuowJobMarketReward(sName, sLine, wildcards)
+  -- Reset resignations
+  iResignations = 0
+  if (sThisJobID == "") then
+    return
+  end
+  -- Lookup the job we just finished for a timer ID
+  AddTimer (sJobMarketMissions[sThisJobID][1] .. "_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+end
+
+
+-- Detect user applying for a job
+sThisJobID = GetVariable("sThisJobID")
+sOldJobID = GetVariable("sOldJobID")
+if (sThisJobID == nil) then 
+  sThisJobID = ""
+end
+if (sOldJobID == nil) then 
+  sOldJobID = ""
+end
+function QuowJobMarketApply(sName, sLine, wildcards)
+  Send(sLine)
+  local sTempID = string.upper(wildcards[1])
+  local sRealTempID = ""
+  local bIsValidID = false
+  -- Check if this is a valid ID
+  for sKey, sJobEntry in pairs(sJobMarketMissions) do
+    if (sJobEntry[2] == sTempID) then
+      sRealTempID = sKey
+      bIsValidID = true
+      break
+    end
+  end
+  if (bIsValidID == true) then
+    sOldJobID = sThisJobID
+    sThisJobID = sRealTempID
+    SetVariable("sThisJobID", sThisJobID)
+    SetVariable("sOldJobID", sOldJobID)
+  end
+end
+
+-- Invalid ID applied for
+function QuowJobWrongID(sName, sLine, wildcards)
+  sThisJobID = sOldJobID
+  sOldJobID = ""
+  SetVariable("sThisJobID", sThisJobID)
+  SetVariable("sOldJobID", sOldJobID)
+end
+
+-- Job board letter assignment
+function QuowJobBoardLine(sName, sLine, wildcards)
+  local sBoardJobName = wildcards[2]
+  local sBoardJobID = string.upper(wildcards[1])
+  local iSecondsToGo = 0
+  local iSecond = 0
+  local iMinute = 0
+  -- Delete any jobs with matching ID
+  for sKey, sJobEntry in pairs(sJobMarketMissions) do
+    if (sJobEntry[2] == sBoardJobID) then
+      sJobMarketMissions[sKey][2] = "XX"
+    end
+  end
+  -- Find an appropriate match
+  if (sJobMarketMissions[sBoardJobName] ~= nil) then
+    sJobMarketMissions[sBoardJobName][2] = sBoardJobID
+    if (IsTimer(sJobMarketMissions[sBoardJobName][1] .. "_" .. sCurrentCharacter) == 0) then
+      iSecondsToGo = tonumber(GetTimerInfo(sJobMarketMissions[sBoardJobName][1] .. "_" .. sCurrentCharacter, 13))
+      iMinute = math.floor(iSecondsToGo / 60)
+      iSecond = (iSecondsToGo - (iMinute * 60))
+      ColourTell ("silver", "", "[" .. sBoardJobID .. "] " .. sBoardJobName .. " (")
+      ColourTell ("cyan", "", "resets in " .. string.format("%02dm %02ds", iMinute, iSecond))
+      ColourNote ("silver", "", ")")
+    else
+      ColourNote ("silver", "", "[" .. sBoardJobID .. "] " .. sBoardJobName)
+    end
+  else
+    ColourNote ("silver", "", "[" .. sBoardJobID .. "] " .. sBoardJobName .. " (unrecognised job type)")
+  end
+end
+
+
+-- Detect user offering to deliver a letter
+sLastLetterCode = ""
+function QuowOfferLetterDelivery(sName, sLine, wildcards)
+  Send(sLine)
+  if wildcards[1] == nil then
+    sLastLetterCode = string.upper("dli")
+	--Note("Reva added, dli.")
+  else
+    sLastLetterCode = string.upper(wildcards[1])
+  end
+end
+
+-- Letter exp reward, that means we finished the last started letter
+function QuowLetterReward(sName, sLine, wildcards)
+  if (sLastLetterCode ~= nil and sLastLetterCode ~= "" and sLetterTypes[sLastLetterCode] ~= nil) then
+    AddTimer("DeadLetter" .. sLastLetterCode .. "_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+  end
+end
+
+-- Detected a reward string for other missions, record what we just completed based on previously seen data
+function QuowMissionReward (sName, sLine, wildcards)
+  -- See if we were waiting for an Ozzie pottery, Pennie Laced, or Hackett photo timer?
+  if (IsTimer("StoPotteryWaiting_" .. sCurrentCharacter) == 0) then
+    AddTimer ("StoLatPottery_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+    DeleteTimer("StoPotteryWaiting_" .. sCurrentCharacter)
+  elseif (IsTimer("OCPennieMission_" .. sCurrentCharacter) == 0) then
+    AddTimer ("OCPennieLaced_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+    DeleteTimer("OCPennieMission_" .. sCurrentCharacter)
+  elseif (IsTimer("FinPhotograph_" .. sCurrentCharacter) == 0) then
+    AddTimer ("Photograph_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+    DeleteTimer("FinPhotograph_" .. sCurrentCharacter)
+  end
+end
+
+
+function RevaAddTimers()
+  AddTimer ("GenuaFurniture_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+  AddTimer ("StoPotteryWaiting_" .. sCurrentCharacter, 0, 35, 0, "", 1061, "")
+end
+
+-- Detected the start of a genua furniture mission
+function QuowGenuaFurnitureStart(sName, sLine, wildcards)
+  AddTimer ("GenuaFurniture_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+end
+
+-- Detected the start of a pottery mission, prepare for completion line
+function QuowPotteryStart(sName, sLine, wildcards)
+  AddTimer ("StoPotteryWaiting_" .. sCurrentCharacter, 0, 35, 0, "", 1061, "")
+end
+
+-- Detected a Pennie Laced mission win
+function QuowPennieStart(sName, sLine, wildcards)
+  AddTimer ("OCPennieMission_" .. sCurrentCharacter, 0, 1, 0, "", 1061, "")
+end
+
+-- Detected a Photograph mission win
+function QuowPhotographStart(sName, sLine, wildcards)
+  AddTimer ("FinPhotograph_" .. sCurrentCharacter, 0, 1, 0, "", 1061, "")
+end
+
+-- Message 10 minutes after resigning from the job market
+function QuowJobMarketReApply(sName, sLine, wildcards)
+  local iFind = string.find(sName, "_", 1, true)
+  local sThisCharacterName = string.sub(sName, iFind + 1)
+  local sPreAdd = "You"
+  if (sThisCharacterName ~= "NoName") then
+    sPreAdd = "'" .. sThisCharacterName .. "'"
+  end
+  ColourNote("red", "", "Mission Helper:")
+  ColourNote("orange", "", sPreAdd .. " can now apply for a new mission from the Job Market.")
+  Note("")
+end
+
+-- Message 10 minutes after returning a letter
+function QuowLetterRestart(sName, sLine, wildcards)
+  local iFind = string.find(sName, "_", 1, true)
+  local sThisCharacterName = string.sub(sName, iFind + 1)
+  local sPreAdd = "You"
+  if (sThisCharacterName ~= "NoName") then
+    sPreAdd = "'" .. sThisCharacterName .. "'"
+  end
+  ColourNote("red", "", "Mission Helper:")
+  ColourNote("orange", "", sPreAdd .. " can now request a new letter from Frank.")
+  Note("")
+end
+
+-- Send a message to the user's screen telling them they can do a mission again
+function QuowMissionNotify(sName)
+  -- Uncomment the below "Sound" command and give it a valid path to a .WAV sound file (USE FORWARD SLASHES in the path!)
+  -- Sound ("C:/Discworld/notification.wav")
+
+  -- Make sure we didn't send the noficiation variable to false
+  if (bNotificationTimers ~= true) then
+    return
+  end
+
+  -- Split character name from mission name
+  local iFind = string.find(sName, "_", 1, true)
+  local sThisMissionName = string.sub(sName, 1, iFind - 1)
+  local sThisCharacterName = string.sub(sName, iFind + 1)
+  local sPreAdd = ""
+  if (sThisCharacterName ~= "NoName") then
+    sPreAdd = "['" .. sThisCharacterName .. "'] "
+  end
+
+  ColourNote ("red", "", "Mission Helper Notice:")
+
+  for sThisLetterType, sThisLetterName in pairs(sLetterTypes) do
+    if (sThisMissionName == "DeadLetter" .. sThisLetterType) then
+      ColourNote ("orange", "", sPreAdd .. "It has now been 60 minutes since last completing a " .. sThisLetterName .. " dead-letter!")
+      Note("")
+      return
+    end
+  end
+  if (sThisMissionName == "SausageEasy") then
+    ColourNote ("orange", "", sPreAdd .. "It has now been 60 minutes since last completing an EASY simple sausage mission from Sam Slager!")
+  elseif (sThisMissionName == "SausageHard") then
+    ColourNote ("orange", "", sPreAdd .. "It has now been 60 minutes since last completing a HARD herbal sausage mission from Sam Slager!")
+  elseif (sThisMissionName == "StoLatPottery") then
+    ColourNote("orange", "", sPreAdd .. "It has now been 60 minutes since last completing an Ozzie Guntram pottery mision in Sto-Lat!")
+  elseif (sThisMissionName == "OCPennieLaced") then
+    ColourNote("orange", "", sPreAdd .. "It has now been 60 minutes since last completing a Pennie Laced mision in OC!")
+  elseif (sThisMissionName == "Photograph") then
+    ColourNote("orange", "", sPreAdd .. "It has now been 60 minutes since last completing a Theodor Hackett Photograph mission!")
+  elseif (sThisMissionName == "GenuaFurniture") then
+    ColourNote("orange", "", sPreAdd .. "It has now been 60 minutes since last starting a Jone Raynalds Genua Furniture mission!")
+  elseif (sThisMissionName == "BPFamilyMission") then
+    ColourNote("orange", "", sPreAdd .. "It has now been 30 minutes since last completing a family mission in BP!")
+  else
+    -- Job market mission timers
+    for sKey, sJobEntry in pairs(sJobMarketMissions) do
+      if (sJobEntry[1] == sThisMissionName) then
+        ColourNote("orange", "", sPreAdd .. "It has now been 60 minutes since completing a '" .. sKey .. "' Job-Market mission!")
+        break
+      end
+    end
+  end
+  Note("")
+end
+
+sQuowNums = 
+{
+  ["one"] = 1,
+  ["two"] = 2,
+  ["three"] = 3,
+  ["four"] = 4,
+  ["five"] = 5,
+  ["six"] = 6,
+  ["seven"] = 7,
+  ["eight"] = 8,
+  ["nine"] = 9,
+  ["ten"] = 10,
+}
+-- Reading a street-repair writ
+iSetts = 0
+iCobbles = 0
+function QuowSettCountPrime (sName, sLine, wildcards)
+  EnableTrigger("QuowSettCounter", true)
+  EnableTrigger("QuowSettCountEnd", true)
+  iStreetRepairCounts = {}
+  iSetts = 0
+  iCobbles = 0
+end
+function QuowSettCounter (sName, sLine, wildcards)
+  if (wildcards.cobbletype == "cobble") then
+    iCobbles = iCobbles + sQuowNums[wildcards.count]
+  elseif (wildcards.cobbletype == "sett") then
+    iSetts = iSetts + sQuowNums[wildcards.count]
+  end
+end
+function QuowSettCountEnd (sName, sLine, wildcards)
+  EnableTrigger("QuowSettCounter", false)
+  EnableTrigger("QuowSettCountEnd", false)
+  ColourNote("darkorange", "", "Quow's Mission Helper:  You need " .. iCobbles .. " cobbles and " .. iSetts .. " setts in total.")
+end
+
+-- Returning a letter
+function QuowLetterReturn(sName, sLine, wildcards)
+  -- Don't interrupt the command send
+  Send(sLine)
+  -- Call the timer function below
+  QuowLetterFailure()
+end
+-- 10 minute reminder on failure
+function QuowLetterFailure (sName, sLine, wildcards)
+  AddTimer ("DeadLetterReturn_" .. sCurrentCharacter, 0, 10, 0, "", 1061, "QuowLetterRestart")
+end
+
+-- Sausage missions
+iCurrentSausageDifficulty = 1
+iCurrentSausagePrimer = 1
+-- Hard sausage primer
+function QuowSausagePrimeHard (sName, sLine, wildcards)
+  iCurrentSausagePrimer = 2
+  EnableTrigger("QuowSausageStarted", true)
+end
+-- Easy sausage primer
+function QuowSausagePrimeEasy (sName, sLine, wildcards)
+  iCurrentSausagePrimer = 1
+  EnableTrigger("QuowSausageStarted", true)
+end
+-- Started a sausage mission
+function QuowSausageStarted (sName, sLine, wildcards)
+  iCurrentSausageDifficulty = iCurrentSausagePrimer
+  EnableTrigger("QuowSausageStarted", false)
+  EnableTrigger("QuowSausageResigned", true)
+  EnableTrigger("QuowSausageCompleted", true)
+end
+-- Retiring from a sausage mission
+function QuowSausageResigned (sName, sLine, wildcards)
+  EnableTrigger("QuowSausageStarted", false)
+  EnableTrigger("QuowSausageResigned", false)
+  EnableTrigger("QuowSausageCompleted", false)
+  AddTimer ("SausageRetry_" .. sCurrentCharacter, 0, 10, 0, "", 1061, "QuowSausageRestart")
+end
+-- Completing a sausage mission
+function QuowSausageCompleted (sName, sLine, wildcards)
+  EnableTrigger("QuowSausageStarted", false)
+  EnableTrigger("QuowSausageResigned", false)
+  EnableTrigger("QuowSausageCompleted", false)
+  if (iCurrentSausageDifficulty == 1) then
+    AddTimer ("SausageEasy_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+  else
+    AddTimer ("SausageHard_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
+  end
+end
+
+-- Message 10 minutes after cancelling a sausage
+function QuowSausageRestart(sName, sLine, wildcards)
+  -- Split character name from mission name
+  local iFind = string.find(sName, "_", 1, true)
+  local sThisCharacterName = string.sub(sName, iFind + 1)
+  local sPreAdd = "You"
+  if (sThisCharacterName ~= "NoName") then
+    sPreAdd = "'" .. sThisCharacterName .. "'"
+  end
+  ColourNote("red", "", "Mission Helper:")
+  ColourNote("orange", "", sPreAdd .. " can now try a new sausage mission from Sam Slager.")
+  Note("")
+end
+
+-- Add aliases for user-aliases to call functions on plugin load
+-- See if we have set a special alias for applying for job market jobs
+sJobAlias = GetVariable("sJobAlias")
+if (sJobAlias ~= nil and sJobAlias ~= "") then
+  AddAlias("JobAlias", "^" .. sJobAlias .. " ([A-Z]{2})$", "", 1185, "QuowJobMarketApply")
+end
+if (sJobAlias == nil) then
+  sJobAlias = ""
+end
+-- And a special alias for offering to deliver a letter
+sLetterAlias = GetVariable("sLetterAlias")
+if (sLetterAlias ~= nil and sLetterAlias ~= "") then
+  AddAlias("LetterAlias", "^" .. sLetterAlias .. " (D[A-Z]{2})$", "", 1185, "QuowOfferLetterDelivery")
+end
+if (sLetterAlias == nil) then
+  sLetterAlias = ""
+end
+
+-- **********************************************************************
+-- ***** Quow's profiler for debugging mission bugs/times/functions *****
+-- **********************************************************************
+local objProfiler = loadfile((GetPluginInfo(GetPluginID(), 20)) .. "_profiler_missions.lua")
+if (objProfiler ~= nil) then
+  objProfiler()
+end
+
+
+sRevaBriefJobMarketMissions = {
+  -- Easy
+  ["Thirst Quencher"] 						= "Quencher",
+  ["Dog Walker"] 							= "Walker",
+  ["Advertising Manager"] 					= "Advert",
+  ["Gofer"] 								= "Gofer",
+  -- Medium
+  ["Street Fixer"] 							= "St. Fixer",
+  ["Sett Maker"] 							= "Sett Maker",
+  ["Delivery Lackey"] 						= "Lackey",
+  ["Delivery Runner"] 						= "Runner",
+  ["Full-time Street Repairer"] 			= "St. Repairer",
+  ["Textiles Fixer"] 						= "Tex. Fixer",
+  -- Hard
+  ["Expert Street Maintenance Technician"] 	= "St. Tech.",
+  ["Deliverer of Rare Items"] 				= "Rare Items",
+  ["Deliverer of Foreign Goods"] 			= "Foreign Goods",
+}
+
+require "json"
+-- Function for gathering info for Missions Window
+function RevaMissionTimerWindowInfo ()
+	tl = GetTimerList ()
+
+	local TimerList = {}
+	if not tl or #tl == 1 then
+		else
+		for k, v in ipairs (tl) do 
+			if v == "wintic" then
+				table.remove(tl, k)
+				break
+			end
+		end
+		
+		for k, v in ipairs (tl) do 
+			if v ~= "wintic" then
+			
+
+			local sThisMissionName, sCharName = string.match(v, "(.+)_(.+)")
+
+			--Now lets figure out what the timer is, and add it to a table with the char name and time remaining
+			for sThisLetterType, sThisLetterName in pairs(sLetterTypes) do
+				if (sThisMissionName == string.lower("DeadLetter" .. sThisLetterType)) then
+					table.insert(TimerList, {sCharName, "PO ("..sThisLetterType..")", tonumber(GetTimerInfo(v, 13))})
+					break
+				end
+			end
+			if (sThisMissionName == string.lower("DeadLetterReturn")) then
+				table.insert(TimerList, {sCharName, "PO (New)", tonumber(GetTimerInfo(v, 13))})
+ 			elseif (sThisMissionName == string.lower("JobMarketApply")) then
+				table.insert(TimerList, {sCharName, "Job Market (New)", tonumber(GetTimerInfo(v, 13))})
+			elseif (sThisMissionName == string.lower("SausageEasy")) then
+				table.insert(TimerList, {sCharName, "Slager (Easy)", tonumber(GetTimerInfo(v, 13))})
+			elseif (sThisMissionName == string.lower("SausageHard")) then
+				table.insert(TimerList, {sCharName, "Slager (Hard)", tonumber(GetTimerInfo(v, 13))})
+			elseif (sThisMissionName == string.lower("StoLatPottery")) then
+				table.insert(TimerList, {sCharName, "Pottery", tonumber(GetTimerInfo(v, 13))})
+			elseif (sThisMissionName == string.lower("OCPennieLaced")) then
+				table.insert(TimerList, {sCharName, "Laced", tonumber(GetTimerInfo(v, 13))})
+			elseif (sThisMissionName == string.lower("Photograph")) then
+				table.insert(TimerList, {sCharName, "Photo", tonumber(GetTimerInfo(v, 13))})
+			elseif (sThisMissionName == string.lower("GenuaFurniture")) then
+				table.insert(TimerList, {sCharName, "Furniture", tonumber(GetTimerInfo(v, 13))})
+			elseif (sThisMissionName == string.lower("BPFamilyMission")) then
+				table.insert(TimerList, {sCharName, "BP Family", tonumber(GetTimerInfo(v, 13))})
+			else
+				-- Job market mission timers
+				for sKey, sJobEntry in pairs(sJobMarketMissions) do
+					if (string.lower(sJobEntry[1]) == sThisMissionName) then
+						local sJob = sRevaBriefJobMarketMissions[sKey] or sKey
+						table.insert(TimerList, {sCharName, "Job Market (" .. sJob .. ")", tonumber(GetTimerInfo(v, 13))})
+						break
+					end
+				end
+			end
+			end
+		end  -- for
+	end
+	return TimerList
+end
+
+function OnPluginSaveState ()
+	WINDATA[win]["POS_X"] = WindowInfo(win, 10)
+	WINDATA[win]["POS_Y"] = WindowInfo (win, 11)
+
+	SetVariable("WINDATA", json.encode(WINDATA))
+	if bIsClosing == true then
+		WindowShow (win,  false)
+		WindowDelete(win)
+	end
+ 
+end -- function OnPluginSaveState
+
+function OnPluginDisable()
+	WindowShow (win,  false)
+end
+
+function OnPluginClose ()
+	bIsClosing = true
+end
+
+----------------
+--MINWINDOW!!!--
+----------------
+function UpdateWindow()
+	--Do not update while dragging or it stops the dragging
+	if bDragging == true then 
+		--DebugNote("Not updated bec. of dragging.")
+		return 
+	end
+
+
+	WindowRectOp (win, 2, 0, 0, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], ColourNameToRGB("black"))-- clears the window so old frame doesn't show
+
+	WindowAddHotspot(win, "dragspot", WINDATA[win]["PADDING"]+2, WINDATA[win]["PADDING"]+2, WINDATA[win]["WIDTH"] - WINDATA[win]["PADDING"]-2,WINDATA[win]["HEIGHT"] - WINDATA[win]["PADDING"]-2,   --rectangle
+                 "",   -- MouseOver
+                 "",   -- CancelMouseOver
+                 "mousedown",
+                 "cancelmousedown", 
+                 "mouseup", 
+                 "Click to drag",  -- tooltip text
+                 miniwin.cursor_plus, 0)  -- hand cursor
+	WindowDragHandler(win, "dragspot", "dragmove", "dragrelease", 0) 
+
+	local iLineSpacing = 0
+	local iSkipTitleLine = 0
+
+	--Draw title
+	local sTitle = "Missions"
+	local iFWidth = WindowTextWidth (win, "f", sTitle)
+	local iIndent = (WINDATA[win]["WIDTH"]-iFWidth)/2
+	iLineSpacing = 3
+	WindowText (win, "f", sTitle, iIndent, (WINDATA[win]["PADDING"]), 0, 0,	ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), false) -- not Unicode
+
+	--Draw a dotted line
+	WindowLine (win, WINDATA[win]["PADDING"]+1, (WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])+((WINDATA[win]["PADDING"])),
+		WINDATA[win]["WIDTH"]-WINDATA[win]["PADDING"], (WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])+((WINDATA[win]["PADDING"])), 
+		ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), miniwin.pen_dot, 0)
+	iSkipTitleLine = 1
+	--end
+
+	local iLineNumber = 0
+	local bDisplayingPlayer = false
+	local iIndent = 2
+	local DisplayTable = RevaMissionTimerWindowInfo()
+
+	if #DisplayTable > 0 then
+		WindowShow (win,  true)
+
+		--sort by time remaining
+		local SortFunc = function( a,b ) return a[3] < b[3] end
+		table.sort( DisplayTable, SortFunc )
+
+		--grab the 7 highest entries.
+		local TopSeven = {}
+
+		for i, v in ipairs (DisplayTable) do
+			table.insert(TopSeven, v)
+			if i > WINDATA[win]["LINES"] then
+				break
+			end
+		end
+
+		TopSevenNameList = {}
+
+		for i, v in ipairs (TopSeven) do
+			local bIsAlready = false
+			for ii, vv in ipairs (TopSevenNameList) do
+				if v[1] == vv["name"] then
+					bIsAlready = true
+					break
+				end
+			end
+			if bIsAlready == false then
+				table.insert(TopSevenNameList, {["name"] = v[1]})
+			end
+		end
+
+		for i, v in ipairs (TopSeven) do
+			for ii, vv in ipairs (TopSevenNameList) do
+				if v[1] == vv["name"] then
+					table.insert(vv, {v[2], v[3]})
+					break
+				end
+			end
+		end
+
+		for i, v in ipairs (TopSevenNameList) do
+			local SortFuncNames = function( a,b ) return a[2] < b[2] end
+			table.sort( v, SortFuncNames )
+		end
+				
+		local SortFuncNames = function( a,b ) return a[1] < b[1] end
+		table.sort( TopSeven, SortFuncNames )
+		
+		local iLines = 0
+		local iTimerNumber = 1
+		local sCurName = "1"
+		for i, v in ipairs (TopSevenNameList) do
+			if iLines > WINDATA[win]["LINES"] then
+				break
+			end
+			if v["name"] ~= sCurName then
+				sCurName = v["name"]
+				WindowText (win, "f3", firstToUpper(sCurName), WINDATA[win]["PADDING"]+iIndent, ((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLines+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),	0, 	0,	ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), false) -- not Unicode
+				WindowText (win, "f", ":", WINDATA[win]["PADDING"]+iIndent+WindowTextWidth(win, "f3", firstToUpper(sCurName)), ((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLines+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),	0, 	0,	ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), false) -- not Unicode
+				iLines = iLines + 1
+			end
+			for ii, vv in ipairs (v) do
+				if iLines > WINDATA[win]["LINES"] then
+					break
+				end
+				WindowText (win, "f", "  " .. vv[1] .. " - " .. FormatTime(vv[2]), WINDATA[win]["PADDING"]+iIndent, ((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(iLines+iSkipTitleLine))+((WINDATA[win]["PADDING"])+iLineSpacing),	0, 	0,	ColourNameToRGB(WINDATA[win]["TEXT_COLOUR"]), false) -- not Unicode
+				--iTimerNumber = iTimerNumber + 1
+				iLines = iLines + 1
+			end
+		end
+	else
+		WindowShow (win,  false)
+	end
+		
+    WindowRectOp(win, miniwin.rect_frame, 0, 0, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], ColourNameToRGB(WINDATA[win]["BORDER_COLOUR"]), ColourNameToRGB("black"))
+end
+
+function FormatTime(iNum)
+    iSecondsToGo = tonumber(iNum)
+    iMinute = math.floor(iSecondsToGo / 60)
+    iSecond = (iSecondsToGo - (iMinute * 60))
+	return string.format("%d:%02ds", iMinute, iSecond)
+end
+
+function firstToUpper(str)
+    return (str:gsub("^%l", string.upper))
+end
+	
+--------------------------------------------------------------------------------
+--   DRAG AND HOTSPOT HANDLERS
+--------------------------------------------------------------------------------
+function mousedown(flags, hotspot_id)
+	if hotspot_id == "dragspot" then
+		startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
+	end
+end -- mousedown
+
+function cancelmousedown(flags, hotspot_id)
+end -- cancelmousedown
+
+function mouseup(flags, hotspot_id)
+	if (hotspot_id == "dragspot") and (flags == miniwin.hotspot_got_rh_mouse ) then
+	end
+end -- mouseup
+
+bDragging = false
+function dragmove(flags, hotspot_id)
+	if hotspot_id == "dragspot" then
+		local posx, posy = WindowInfo (win, 17), WindowInfo (win, 18)
+		bDragging = true
+		--DebugNote("Dragging...")
+		-- move the window to the new location
+		WindowPosition(win, posx - startx, posy - starty, 0, 2)
+
+		-- change the mouse cursor shape appropriately
+		if posx < 0 or posx > GetInfo (281) or
+		posy < 0 or posy > GetInfo (280) then
+			check (SetCursor ( 11))   -- X cursor
+		else
+			check (SetCursor ( 1))   -- hand cursor
+		end -- if
+	end
+end -- dragmove
+
+function dragrelease(flags, hotspot_id)
+	--DebugNote("No longer dragging")
+	bDragging = false
+end -- dragrelease
+
+win = "MissionWindow" .. GetPluginID ()
+
+WindowCreate (win, 0, 0, 0, 0, miniwin.pos_center_all, 0, ColourNameToRGB("black")) -- we must load the window before we can load fonts
+	
+--need to calculate this later...
+sLongestMissionText = "Job Market (Foreign Goods)"
+--Load saved data  --edited to not save so it can be edited from file
+if (GetVariable("WINDATA") ~= nil) then
+	WINDATA = json.decode(GetVariable("WINDATA"))
+end
+	WINDATA= {
+	[win] = {
+			["TEXT_COLOUR"] = "orange",
+			["BORDER_COLOUR"] = "silver",
+			["FONT"] = "Arial",
+			["FONT_SIZE"] = 10,
+			["PADDING"] = 2,
+			["LINE_SPACING"] = 0,
+			["BRIEF"] = false,
+			["SHOW"] = true,
+			["LINES"] = 8,
+			}
+	}
+		
+	WindowFont (win, "f", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, false)
+	--WindowFont (win, "f2", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, false, true) -- strikethrough
+	WindowFont (win, "f3", WINDATA[win]["FONT"], WINDATA[win]["FONT_SIZE"], false, false, true, false) -- underline
+
+	
+	WINDATA[win]["FONT_HEIGHT"] = WindowFontInfo (win, "f", 1)
+	WINDATA[win]["TEXT_WIDTH"] = WindowTextWidth (win, "f", "  " .. sLongestMissionText .. " - XX:XXs")
+	WINDATA[win]["WIDTH"] = WINDATA[win]["TEXT_WIDTH"]+(WINDATA[win]["PADDING"]*2)
+
+	WINDATA[win]["HEIGHT"] = ((WINDATA[win]["LINE_SPACING"]+WINDATA[win]["FONT_HEIGHT"])*(WINDATA[win]["LINES"]+1)+WINDATA[win]["LINE_SPACING"])+(WINDATA[win]["PADDING"]*2)
+
+--end
+
+WindowCreate (win, 0, 0, WINDATA[win]["WIDTH"], WINDATA[win]["HEIGHT"], miniwin.pos_bottom_right, 4, ColourNameToRGB("white"))
+
+if (WINDATA[win]["POS_X"] ~= nil) and (WINDATA[win]["POS_Y"] ~= nil) then
+	Note("restoring position...")
+	WindowPosition(win, WINDATA[win]["POS_X"], WINDATA[win]["POS_Y"], 0, 2)
+else
+	WindowPosition(win, 0, 0, 8, 0)
+end
+
+WindowShow (win,  WINDATA[win]["SHOW"])
+UpdateWindow()
+
+--Should bring to front, add as option later
+WindowSetZOrder(win, 2000)
+
+iTicFlags = timer_flag.Enabled + timer_flag.ActiveWhenClosed
+AddTimer("WinTic", 0, 0, 1, "", iTicFlags, "UpdateWindow")
+]]>
+</script> 
+<!--  Triggers  -->
+<triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Sam Slager asks you(.+?) So, you want to try filling a sausage order\?  You'll have four hours to hunt (.+?), gather spices to mix into the ground meat, make (.+?) sausages from it, and deliver them to me.  Are you up to it\?$"
+   regexp="y"
+   script="QuowSausagePrimeHard"
+   name="QuowSausagePrimeHard"
+   sequence="39"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Sam Slager asks you(.+?) So, you want to try filling a sausage order\?  You'll have four hours to hunt (.+?), make (.+?) sausages from it, and deliver them to me.  Are you up to it\?$"
+   regexp="y"
+   script="QuowSausagePrimeEasy"
+   name="QuowSausagePrimeEasy"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^(?:> )?You have four hours to deliver (.+?) fresh (.+?) sausages to Sam Slager\.$"
+   regexp="y"
+   script="QuowSausageStarted"
+   name="QuowSausageStarted"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^(?:> )?Sam Slager says to you(.+?) I'll have to take care of this one later\.$"
+   regexp="y"
+   script="QuowSausageResigned"
+   name="QuowSausageResigned"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^(?:> )?Sam Slager gives you (.+)(dollar|pence)(.+)$"
+   regexp="y"
+   script="QuowSausageCompleted"
+   name="QuowSausageCompleted"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You have been awarded [0-9]{1,7} experience points\.  There may also be a little gift for you in the family coffers\.$"
+   regexp="y"
+   script="QuowBPFamilyComplete"
+   name="QuowBPFamilyComplete"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You have been awarded [0-9]{1,7} experience points for( partially){0,1} completing this job\.(  Report to Mr Werks to collect (.+?)( and (.+?) reimbursement){0,1}\.){0,1}$"
+   regexp="y"
+   script="QuowJobMarketReward"
+   name="QuowJobMarketReward"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?The time has expired on your present job\.  You do not need to finish the rest of your deliveries, Mr Werks will find someone else to do this\.$"
+   regexp="y"
+   script="QuowJobMarketimeout"
+   name="QuowJobMarketimeout"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   ignore_case="n"
+   keep_evaluating="n"
+   omit_from_output="y"
+   match="^(?:> )?([A-Z]{2})\) (Thirst Quencher|Gofer|Dog Walker|Advertising Manager|Street Fixer|Sett Maker|Delivery Lackey|Delivery Runner|Full-time Street Repairer|Textiles Fixer|Expert Street Maintenance Technician|Deliverer of Rare Items|Deliverer of Foreign Goods)$"
+   regexp="y"
+   sequence="10"
+   script="QuowJobBoardLine"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   ignore_case="n"
+   keep_evaluating="n"
+   match="^(?:> )?There is no job with id &quot;([A-Z]{2})&quot;\.$"
+   regexp="y"
+   sequence="10"
+   script="QuowJobWrongID"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You have been awarded [0-9]{1,7} experience points and given (.+?)\.$"
+   regexp="y"
+   script="QuowMissionReward"
+   name="QuowMissionReward"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You have been awarded ([0-9]{1,7}) experience points for delivering this letter\.$"
+   regexp="y"
+   script="QuowLetterReward"
+   name="QuowLetterReward"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You have 30 minutes to bring Ozzie his order\.$"
+   regexp="y"
+   script="QuowPotteryStart"
+   name="QuowPotteryStart"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You return Miss Pennie's (.+?) as promised\.$"
+   regexp="y"
+   script="QuowPennieStart"
+   name="QuowPennieStart"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Theodor Hackett exclaims to you(.+)$"
+   regexp="y"
+   script="QuowPhotographStart"
+   name="QuowPhotographStart"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^You are tasked with performing street repairs in Ankh-Morpork\.  Go to the locations provided below and repair any damage as necessary\.  You can perform the repairs in any order\.$"
+   regexp="y"
+   script="QuowSettCountPrime"
+   name="QuowSettCountPrime"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^\[ \] (?P<task>[0-9]{1,2})\) Replace (?P<count>one|two|three|four|five|six|seven|eight|nine|ten) damaged (?P<cobbletype>cobble|sett)s? in the .+? located at (the )?(?P<location>.+)\.$"
+   regexp="y"
+   script="QuowSettCounter"
+   name="QuowSettCounter"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="n"
+   match="^This job requires a shovel, crowbar or pickaxe, a degree of artistic skill, and replacement pavers, either cobbles or setts\.  Each location will require a specific type of paver\.$"
+   regexp="y"
+   script="QuowSettCountEnd"
+   name="QuowSettCountEnd"
+   sequence="40"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?You offer to give an? (.+?) letter to Frank\.$"
+   regexp="y"
+   script="QuowLetterFailure"
+   sequence="30"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?Jone Raynalds says in Morporkian with a Genuan accent: Yes, we have a job for you\.  You need to go to (.+?) and repair (.+?)\.  You'll need (.+?), and you have 1 hour to do the job\.  Good luck\.$"
+   regexp="y"
+   script="QuowGenuaFurnitureStart"
+   sequence="30"
+  >
+  </trigger>
+</triggers>
+<timers>
+</timers>
+</muclient>

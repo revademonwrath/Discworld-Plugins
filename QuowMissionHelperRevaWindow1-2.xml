@@ -28,15 +28,6 @@
 <!--  Aliases  -->
 <aliases>
   <!-- Alias to catch what dead letter you offer to deliver -->
-  <alias
-   match="^revaaddtimers$"
-   enabled="n"
-   ignore_case="y"
-   regexp="y"
-   sequence="5"
-   script="RevaAddTimers"
-  > 
-  </alias>
   <!-- If Discworld adds a "missions" command in the future, change this alias to another command to show timers -->
   <alias
    match="missions"
@@ -529,12 +520,6 @@ function QuowMissionReward (sName, sLine, wildcards)
     AddTimer ("Photograph_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
     DeleteTimer("FinPhotograph_" .. sCurrentCharacter)
   end
-end
-
-
-function RevaAddTimers()
-  AddTimer ("GenuaFurniture_" .. sCurrentCharacter, 1, 0, 0, "", 1061, "QuowMissionNotify")
-  AddTimer ("StoPotteryWaiting_" .. sCurrentCharacter, 0, 35, 0, "", 1061, "")
 end
 
 -- Detected the start of a genua furniture mission

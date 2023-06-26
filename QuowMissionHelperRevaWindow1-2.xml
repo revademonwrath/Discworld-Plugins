@@ -6,6 +6,7 @@
 <!-- Type "missions all" to list all missions including ones you can currently get a full reward for -->
 <!-- If you want to change the command name to something else, edit the "alias" below -->
 <!-- Note:  In Mushclient, check File->World Properties->General->Timers, tick "Enable Timers" at bottom. -->
+<!-- Reva added MiniWindow Version -->
 
 <!-- Wiki page for Missions:   https://dwwiki.mooo.com/wiki/Missions  -->
 <!-- Research on some missions:  https://dwwiki.mooo.com/wiki/Research:Ankh-Morpork_Job_Market  -->

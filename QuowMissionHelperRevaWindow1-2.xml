@@ -488,17 +488,12 @@ function QuowJobBoardLine(sName, sLine, wildcards)
   end
 end
 
-
+	
 -- Detect user offering to deliver a letter
 sLastLetterCode = ""
 function QuowOfferLetterDelivery(sName, sLine, wildcards)
   Send(sLine)
-  if wildcards[1] == nil then
-    sLastLetterCode = string.upper("dli")
-	--Note("Reva added, dli.")
-  else
-    sLastLetterCode = string.upper(wildcards[1])
-  end
+  sLastLetterCode = string.upper(wildcards[1])
 end
 
 -- Letter exp reward, that means we finished the last started letter

@@ -1,0 +1,495 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- List fly-tos for given area, by Reva -->
+<!-- Other info -->
+
+<muclient>
+<plugin
+   name="FlyToMate"
+   author="Reva"
+   id="6565CEAC83039972B9E65553 "
+   language="Lua"
+   purpose="List fly-to NPCs"
+   date_written="2023-06-27"
+   save_state="y"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<script>
+<![CDATA[
+
+Nicknames = {
+["am"] = "Ankh-Morpork",
+["ankh morpork"] = "Ankh-Morpork",
+["djb"] = "Djelibeybi",
+["klk"] = "Djelibeybi",
+["bp"] = "Bes Pelargic",
+["ch"] = "Copperhead",
+["barbarian"] = "Barbarian Camp",
+["holywood"] = "Holy Wood",
+["holywoods"] = "Holy Wood",
+["holy woods"] = "Holy Wood",
+["slippery"] = "Slippery Hollow",
+["hollow"] = "Slippery Hollow",
+["chronides"] = "Chronides Farmstead",
+["brass"] = "Brassneck",
+["oc"] = "Ohulan Cutash",
+["ohulan-cutash"] = "Ohulan Cutash",
+["unnamed"] = "Unnamed Town",
+["sto"] = "Sto Lat",
+["granny"] = "Granny Weatherwax's cottage",
+["granny weatherwaxs"] = "Granny Weatherwax's cottage",
+["granny weatherwax's"] = "Granny Weatherwax's cottage",
+["weatherwaxs"] = "Granny Weatherwax's cottage",
+["weatherwax's"] = "Granny Weatherwax's cottage",
+["soyin"] = "Temple of Soyin",
+["bleak"] = "Bleak Prospect",
+["propect"] = "Bleak Prospect",
+["imtebos"] = "Imtebos farmstead",
+["cool"] = "Monks of Cool",
+["cool monks"] = "Monks of Cool",
+["coolmonks"] = "Monks of Cool",
+}
+
+FlyTos = {
+["Ankh-Morpork"] = {
+	{"Althea of Pishe",	"althea",	"n"},
+	{"Arnold Sideways",	"arnold",	"Elm Street",	"n"},
+	{"Aroh 	aroh",	"Thieves' Guild", "y"},
+	{"Blind Hugh",	"hugh",	"Western docks 	"},
+	{"Bob",	"bob",	"Usually Bob on the Street of Cunning Artificers, sometimes Old Bob in the Flintwick Building WARNING: Sometimes Bob the Second Best Ticket Seller in Slippery Hollow",	"y"},
+	{"Captain Carrot",	"carrot",	"n"},
+	{"Coffin Henry",	"henry",	"Elm Street",	"n"},
+	{"a confused solicitor",	"solicitor",	"alley off Gleam Street",	"y"},
+	{"Corporal Nobbs",	"nobby",	"n"},
+	{"Cripple Wa",	"wa",	"Sticken Place, can also be Ren Wa in BP",	"n"},
+	{"Cut-Me-Own-Throat Dibbler",	"dibbler",	"Plaza of Broken Moons, The Cham and Sator Square",	"n"},
+	{"Daphne the Leshpian Thespian",	"daphne",	"Isle of Small Gods, Sator square",	"n"},
+	{"Detritus",	"detritus",	"n"},
+	{"Dogbottler",	"dogbottler",	"Intersection of Short St. and St. of Small Gods",	"n"},
+	{"Dorak Clansinger",	"dorak",	"Top of Salt Shaker",	"y"},
+	{"Florette the bunny rabbit",	"florette",	"Temple of Small Gods garden",	"y"},
+	{"Foul Ole Ron",	"ron",	"Elm Street",	"n"},
+	{"Francis with his ukulele of pain",	"francis",	"n"},
+	{"Gerry Watkins",	"watkins",	"Dimwell Street",	"n"},
+	{"Gritjaw Thighsplitter",	"gritjaw",	"Rime Street",	"n"},
+	{"Halen",	"halen",	"near the Temple of Sandelfon in south-east Ankh-Morpork",	"y"},
+	{"Hoff Buchannon",	"hoff",	"Plaza of Broken Moons",	"y"},
+	{"Iris",	"iris",	"Thieves' Guild",	"y"},
+	{"Jolene",	"jolene",	"Wanders a lot",	"n"},
+	{"Haia",	"haia",	"Thieves' Guild",	"y"},
+	{"Kess of Sek",	"kess",	"around Street of Small Gods, Attic Bee street",	"n"},
+	{"Kodattai",	"kodattai",	"on a rooftop above Trotters Lane.  WARNING: requires lots of balancing or you'll fall off the building and take lots of damage!",	"y"},
+	{"Lance-Constable Bauxite",	"bauxite",	"n"},
+	{"Louis Bingham",	"louis",	"n"},
+	{"Maple Bede",	"maple",	"usually on Phedre Road",	"n"},
+	{"Maude Scowd",	"scowd",	"around God's Collar",	"n"},
+	{"Maximiliam Dimlith",	"maximiliam",	"Green Lumpy Bit",	"y"},
+	{"Mr Bradlofrudd",	"bradlofrudd",	"courtyard of the Assassins' Guild",	"n"},
+	{"Mr Glodson",	"glodson",	"n"},
+	{"Mr Lamister",	"lamister",	"courtyard of the Assassins' Guild",	"n"},
+	{"Mr Mericet",	"mericet",	"courtyard of the Assassins' Guild",	"n"},
+	{"Mr Pin",	"pin",	"n"},
+	{"Mr Tulip",	"tulip",	"n"},
+	{"Neelie Awkside",	"neelie",	"Fillgree street, peasants parade and street of alchemists",	"n"},
+	{"Old Wilfred",	"wilfred",	"y"},
+	{"Prinscilla",	"prinscilla",	"grassy paddock behind the stable on King's Down (Horses)",	"y"},
+	{"Prodo Laggins",	"laggins",	"n"},
+	{"[an] animal rights protester",	"protester",	"north end of The Shambles (stationary)",	"y"},
+	{"Roffle",	"roffle",	"Plaza of Broken Moons",	"n"},
+	{"Ronnie Soak, fifth Horseman of the Apocralypse",	"ronnie",	"n"},
+	{"Sacharissa Cripslock",	"sacharissa",	"n"},
+	{"[a] salesgolem",	"salesgolem",	"Dimwell Street, lumber yard",	"y"},
+	{"Sergeant Angua",	"angua",	"n"},
+	{"Sergeant Colon",	"colon",	"n"},
+	{"Skimp",	"skimp",	"n"},
+	{"Sneed Finkman",	"sneed",	"Outside the Post Office (usually)",	"y"},
+	{"a splatter",	"splatter",	"outside All Bar None in Pseudopolis Yard (nighttime only)",	"y"},
+	{"travelling potter",	"potter",	"n"},
+	{"Vy of Fish",	"vy",	"Around Cockbill Street and the docks",	"y"},
+	{"Wallspur",	"wallspur",	"n"},
+	{"Wee Mad Arthur",	"arthur",	"usually around Gleam Street",	"n"},
+	},	
+	["CWC"] = {
+	["zone"] = "Bes Pelargic",
+	{"Tomtom the monkey",	"tomtom",	"By Imperial palace",	"n"},
+	{"For Lilies",	"lilies",	"Hong Fa district",	"n"},
+	{"Glod-San",	"glod-san",	"Imperial Avenue (walks)",	"n"},
+	{"Free Sitting Birds",	"birds",	"Vault on Way of the Dragon",	"y"},
+	{"Boy Willie",	"willie",	"n"},
+	{"Disembowel-Meself-Honourable-Dibhala",	"dibhala",	"usually on Market Street, but can wander into the Snail, so beware!",	"n"},
+	{"Goldenleaf",	"goldenleaf",	"Golden District merchants' marketplace",	"y"},
+	{"Happy Lotus Wind",	"wind",	"Pearl Path",	"n"},
+	{"Hugo Tang",	"tang",	"Tang Estate",	"n"},
+	{"Kang Wu",	"kang",	"black market",	"n"},
+	{"Lon Fah Lo",	"lo",	"n"},
+	{"Mad Hamish",	"hamish",	"n"},
+	{"Miss Information",	"information",	"n"},
+	{"a mosquito watcher",	"watcher",	"Riverview Walk",	"y"},
+	{"Nameless man",	"nameless",	"WARNING: Sometimes wanders into The Snail",	"n"},
+	{"No Go Wan",	"wan",	"Riverview Walk",	"n"},
+	{"Old Vincent",	"vincent",	"n"},
+	{"Quisoda",	"quisoda",	"Bridge Street",	"n"},
+	{"Serene Roses",	"roses",	"usually the Imperial district",	"n"},
+	{"Shi Do Gai",	"gai",	"n"},
+	{"San Shi",	"san",	"Near the Lobster Pot off Tuna Walk (sometimes indoors)",	"n"},
+	{"Tri Len Jewel",	"jewel",	"Imperial District",	"n"},
+	{"Truckle the Uncivil",	"truckle",	"n"},
+	{"Won Favourite Pearl",	"pearl",	"Small park off Hook Street (near the money changer)",	"y"},
+	{"Wun Artful Huckster",	"huckster",	"Tuna Walk",	"n"},
+	{"Wun Gold Star",	"star",	"Golden District merchants' marketplace",	"y"},
+	{"Honourable Roger-san",	"roger-san",	"Blue Moon Park",	"y"},
+	},
+["Calh-Nhad"] = {
+	["zone"] = "Klatch",
+	{"SMOC Dihbl",	"dihbl",	"Just inside the gates of Calh-Nhad",	"y"},
+	},
+["Djelibeybi"] = {
+	["zone"] = "Klatch",
+	{"Daft Bugger",	"bugger",	"Market Street",	"y"},
+	{"First Mate Antonis",	"antonis",	"Harbour - Deck of the 'Brazen Mermaid'",	"y"},
+	{"Gut Fishfryn",	"fishfryn",	"Ptrip-Ptrap bridge"},
+	{"Lap-lip",	"lap-lip",	"n"},
+	{"Lip-phon Lap-top",	"lap-top",	"n"},
+	{"Mihk-gran-bohp",	"bohp",	"usually in the market area",	"n"},
+	{"Noc-noc-bang (hiding)",	"noc",	"y"},
+	{"Phos-phor",	"phos",	"n"},
+	{"Pkara Stainmaster",	"pkara",	"y"},	
+	{"Sandy Ptate",	"ptate",	"y"},
+	{"Sle-pingh-beuh-tei",	"sle-pingh-beuh-tei",	"Sleepers",	"y"},
+	{"Tag-ahn-ruhn",	"tag",	"Garlic Street Junction",	"y"},
+	{"Teh-takk-eht",	"teh",	"Usually Temple Street",	"y"},
+	{"Yclept",	"yclept",	"Pharoah's Park on the Avenue of the Pharoahs",	"n"},
+	},
+["Ephebe"] = {
+	["zone"] = "Klatch",
+	{"Maisey Bent",	"maisey",	"Southern Gardens (Monday)",	"y"},
+	{"Adelphe",	"adelphe",	"Tuvelpit Road",	"y"},
+	{"Anaxabraxas",	"anaxabraxas",	"Dockside market, towel stand",	"y"},
+	{"Andrapodokapelos",	"andrapodokapelos",	"Plaza east of southern gardens, misc goods",	"y"},
+	{"Brick Bumblebee",	"bumblebee",	"Petulia Avenue",	"y"},
+	{"Calleis",	"calleis",	"Dockside market, jewellery stand",	"y"},
+	{"Chidder 	chidder 	Ephebe Underdocks, mysterious cove",	"y"},
+	{"Chyna the Wrestler",	"chyna 	In the sandy corner in the gardens southeast of the Tyrant's palace",	"y"},
+	{"Cynere",	"cynere",	"Dockside market, fish stand",	"y"},
+	{"Endos",	"endos 	Antithesis Lane outside the Boikiro Institute 	y"},
+	{"Eosforos",	"eosforos",	"Ephebe lighthouse plaza, northern end 	y"},
+	{"Euphrosyne",	"euphrosyne",	"The Grove That Is Or Maybe Isn't Bar and Roof Garden",	"y"},
+	{"Himaclitus",	"himaclitus",	"Raise, sw off Harbour Market, ne of Market Taverna",	"y"},
+	{"Kharites",	"kharites",	"The Grove That Is Or Maybe Isn't Bar and Roof Garden",	"y"},
+	{"Klepton",	"klepton",	"Ponder Alley, Dead-end 	y"},
+	{"Lea",	"lea",	"Dockside market, bread stand",	"y"},
+	{"Limos",	"limos",	"Dockside market, cheese stand",	"y"},
+	{"Makimba",	"makimba",	"Ephebe lighthouse plaza, northern end",	"y"},
+	{"Sinoe",	"sinoe",	"Dockside market, fruit and vegetable stand",	"y"},
+	{"Souvlakios",	"souvlakios",	"Tuvelpit Road",	"y"},
+	{"Talaria",	"talaria",	"Dockside market, custom shoe stall",	"y"},
+	{"Telonis",	"telonis",	"Tyrant's Gate",	"y"},
+	{"Ulive",	"ulive",	"Harbour Market, center",	"y"},
+	{"Zevgatis",	"zevgatis",	"Harbour Market, south west",	"y"},
+	},
+["Chronides Farmstead"] = {
+	["zone"] = "Klatch",
+	{"Adeipho Chronides",	"adeipho",	"n"},
+	{"Gus Chronides",	"gus",	"n"},
+	},
+["Imtebos farmstead"] = {
+	["zone"] = "Klatch",
+	{"Djeric Imtebos",	"djeric",	"farm yard", "n"},
+	},
+["Oasis"] = {
+	["zone"] = "Klatch",
+	{"Mr CMOHO Dhblah",	"dhblah",	"n"},
+	},
+
+
+["Genua"] = {
+	{"Casanunda",	"casanunda",	"Wanders around Genua",	"n"},
+	{"Tfat Chick",	"chick",	"Wanders around Genua",	"n"},
+	{"Greig Schwitz",	"schwitz",	"Wanders around Genua",	"n"},
+	{"Johnny the shoeshine boy",	"johnny",	"Wanders around Genua",	"n"},
+	{"Jeef Lirwyn",	"jeef",	"Samedi Crescent",	"y"},
+	{"Jimmi",	"jimmi",	"Jimmi's Buffet",	"y"},
+	{"Noobie",	"noobie",	"Wanders around Genua",	"n"},
+	{"Comte Laurente Bon Ange",	"ange",	"Duelling oaks southwest of Genua city park",	"y"},
+	},
+["Bois"] = {
+	["zone"] = "Genua",
+	{"Bruk Lenhard",	"lenhard",	"on the pier",	"y"},
+	},
+["Bad Ass"] = {
+	["zone"] = "Ramtops",
+	{"Cern Smith",	"cern",	"n"},
+	{"Gulta Smith",	"gulta",	"n"},
+	{"Jaims Smith",	"jaims",	"n"},
+	},
+["Brass Neck"] = {
+	["zone"] = "Ramtops",
+	["warning"] = "WARNING: Keep an eye out in Brass Neck. If you misstep you might fall off a cliff.",
+	{"Annie Spindlewits",	"annie",	"At her cottage west of the town proper. Sometimes inside.",	"n"},
+	},
+["Copperhead"] = {
+	["zone"] = "Ramtops",
+	{"Knar Ironbeard",	"ironbeard",	"The southwest corner of the Copperhead village square",	"y"},
+	},
+["Creel Springs"] = {
+	["zone"] = "Ramtops",
+	{"Dia Shale",	"dia",	"Outside a smithy in Creel Springs",	"y"},
+	},
+["Granny Weatherwax's cottage"] = {
+	["zone"] = "Ramtops",
+	{"Greebo",	"greebo",	"wanders",	"n"},
+	{"Pewsey",	"pewsey",	"wanders",	"n"},
+	{"Nanny Ogg",	"gytha",	"The rimward wall",	"y"},
+	},
+["Lancre"] = {
+	["zone"] = "Ramtops",
+	{"Burberry Carpetsmith",	"burberry",	"Wandering around the town square",	"n"},
+	{"Crog Krowbarr",	"krowbarr",	"Lancre Highland Regiment training yard",	"y"},
+	{"Unlucky Charlie",	"charlie",	"Some fields east of Lancre Square",	"y"},
+	},
+["Lancre Forest"] = {
+	["zone"] = "Ramtops",
+	{"The Blasted Oak",	"oak",	"a bit northeast of Lancre town, southeast of Mad Stoat, just southwest of the Pishe pool",	"y"},
+	},
+["Mad Stoat"] = {
+	["zone"] = "Ramtops",
+	{"Agnes",	"agnes",	"Agnes' cottage. Agnes is sometimes inside",	"n"},
+	{"Maggie",	"maggie",	"Beside a small pond",	"y"},
+	},
+["Ohulan Cutash"] = {
+	["zone"] = "Ramtops",
+	{"a cow",	"bessie",	"wanders",	"n"},
+	{"Raffy the Rook",	"raffy",	"Intersection of Riverwind Road and Riverview Road, just north of Mill Way",	"y"},
+	{"Miss Pennie Laced",	"laced",	"wanders",	"n"},
+	},
+["Razorback"] = {
+	["zone"] = "Ramtops",
+	{"Barney Woodchops",	"barney",	"wanders",	"n"},
+	},
+["Slice"] = {
+	["zone"] = "Ramtops",
+	["warning"] = "WARNING: It's possible to fall off cliffs in Slice too.",
+	{"Goodwife Muckloe",	"muckloe",	"A pigsty (daytime only?)",	"y"},
+	},
+["Slippery Hollow"] = {
+	["zone"] = "Ramtops",
+	["warning"] = "WARNING: At night the Rider of the Hollow might behead you! Do not go east of the common past the sign past the cottage. If you do go there, then go back west real fast.",
+	{"Graeme",	"graeme",	"wanders",	"n"},
+	{"Jennifer Smythe",	"jennifer",	"wanders",	"n"},
+	{"wandering minstrel",	"minstrel",	"wanders",	"n"},
+	{"Chaz Derwin",	"chaz",	"wanders near the common, east of town",	"n"},
+	{"Wheaten",	"wheaten",	"wanders near the common, east of town",	"n"},
+	{"Phillipa Pigshotham",	"phillipa",	"wanders near the common, east of town",	"n"},
+	},
+["Monks of Cool"] = {
+	["zone"] = "Ramtops",
+	{"Brother Boad",	"boad",	"entrance",	"y"},
+	{"Sister Bi-Bi Effenne",	"bibi",	"upstairs balcony",	"y"},
+	{"Sister Ti-Ti Effenne",	"titi",	"upstairs balcony",	"y"},
+	},
+["Temple of Soyin"] = {
+	["zone"] = "Ramtops",
+	{"Temple guardian",	"templeguard",	"entrance",	"y"},
+	},
+["Barbarian Camp"] = {
+	["zone"] = "Ramtops",
+	{"Cohen the Barbarian",	"cohen",	"Winter Camp only",	"y"},
+	{"Feather Ramkin",	"ramkin",	"Summer Camp only",	"y"},
+	},
+["Lancre Pool"] = {
+	["zone"] = "Ramtops",
+	{"Lancre Ness Monster",	"Nessie",	"n"},
+	},
+["Bleak Prospect"] = {
+	["zone"] = "Sto Plains",
+	["warning"] = "WARNING: Beware of autoattacking zombies from late afternoon to early morning.",
+	{"Old Grandma Higginbottom",	"grandma",	"moving around",	"n"},
+	{"Grover Pennywit",	"grover",	"moving around",	"n"},
+	},
+["Dinky"] = {
+	["zone"] = "Sto Plains",
+	{"Duke Bottomley",	"bottomley",	"corn fields",	"n"},
+	{"William Spigot",	"spigot",	"corn fields",	"n"},
+	{"Gabby Wheels",	"wheels",	"corn fields",	"n"},
+	},
+["Hillshire"] = {
+	["zone"] = "Sto Plains",
+	{"Blue (cat)",	"blue",	"Outside the Tobacconists",	"y"},
+	},
+["Holy Wood"] = {
+	["zone"] = "Sto Plains",
+	{"Detritus",	"detritus",	"Studio entrance",	"y"},
+	{"Gaspode",	"gaspode",	"Wanders between the hill and the main gate of Holy Wood",	"n"},
+	{"Laddie",	"laddie",	"Wanders between the hill and the main gate of Holy Wood",	"n"},
+	},
+["Scrogden"] = {
+	["zone"] = "Sto Plains",
+	{"Calvert Desric",	"calvert",	"A pier",	"y"},
+	{"Carlton Desric",	"carlton",	"wanders",	"n"},
+	{"Hughoc Gatewood",	"hughoc",	"wanders",	"n"},
+	},
+["Sheepridge"] = {
+	["zone"] = "Sto Plains",
+	{"A village idiot 	idiot 	wanders 	n"},
+	{"Hamesh 	hamesh 	wanders 	n"},
+	{"Lezek 	lezek 	wanders 	n"},
+	{"tabby cat 	branston 	beer garden of the Frog and Firkin Public House 	y"},
+	},
+["Sto Lat"] = {
+	["zone"] = "Sto Plains",
+	{"Jack Straw", "jack", "Garlic Grove east of Hill Street", "y"},
+	{"Prudence", "prudence", "Just west of Princess Park", "y"},
+	{"Mum Blithesome", "blithesome", "Mum Blithesome's house, off quiet part of Grave's Hope (sometimes indoors)", "n"},
+	},
+["Escrow"] = {
+	["zone"] = "Uberwald",
+	["warning"] = "WARNING: Nasty vampires take over Escrow at night, making this a dangerous holiday destination for wet hens.",
+	{"Tuffy the Vampire Slayer", "tuffy", "wanders", "n"},
+	{"Mouldium Carpetsmith", "mouldium", "wanders", "n"},
+	},
+["Unnamed Town"] = {
+	["zone"] = "Uberwald",
+	{"Abe", 	"abe",	"The graveyard", "y"},
+	{"Arno", 	"arno", 	"wanders", 	"n"},
+	{"Jasen", 	"jasen", 	"wanders", 	"n"}, 
+	}
+}
+
+function ListAreas()
+	local Areas = {}
+	local Zones = {}
+	for k, v in pairs (FlyTos) do
+		table.insert(Areas, k)
+		if v["zone"] ~= nil then
+			local bIsAlready = false
+			for ii, vv in ipairs (Zones) do
+				if v["zone"] == vv then
+					bIsAlready = true
+					break
+				end
+			end
+			if bIsAlready == false then
+				table.insert(Zones, v["zone"])
+			end
+		end
+	end
+		
+	ColourNote(cText, "", "You can list fly-to NPCs for the following zones & areas:")
+
+	local SortFunc = function( a,b ) return a < b end
+	table.sort(Zones, SortFunc )
+	table.sort(Areas, SortFunc )
+	
+	ColourNote(cText, "", table.concat(Zones, ", ") .. ".")
+	ColourNote(cText, "", table.concat(Areas, ", ") .. ".")
+end
+
+function FindFlyTo(sLine, sName, wildcards)
+	if wildcards[1] == "help" then
+		ColourNote(cText, "", "Flyto Mate Help, by Reva")
+		ColourNote(cText, "", "-=-=-=-=-=-=-=-=-=-=-=-=")
+		ColourNote(cText, "", "Lists NPCs that are flyable for specific areas.")
+		ColourNote(cText, "", "'flyto help' - this help text")
+		ColourNote(cText, "", "'flyto list' - list of areas")
+		ColourNote(cText, "", "'flyto <area>' - list flyable NPCs for area")
+		ColourNote(cText, "", "'flyto colour' - pick aset text colour for plugin")
+		ColourNote(cText, "", "'flyto reset' - reset text colour for plugin to default")
+		return
+	elseif wildcards[1] == "list" then
+		ListAreas()
+		return
+	elseif wildcards[1] == "colour" then
+		ChangeTextColour()
+		return
+	elseif wildcards[1] == "reset" then
+		cText = "springgreen"
+		ColourNote(cText, "", "Flyto colour reset to default.")
+		return
+	end
+	
+	local sThisLoc = string.lower(wildcards[1])
+	if Nicknames[sThisLoc] ~= nil then
+		sThisLoc = Nicknames[sThisLoc]
+	end
+	
+	local bIsLoc = false
+	for k, v in pairs (FlyTos) do
+		if string.lower(sThisLoc) == string.lower(k) then
+			bIsLoc = true
+			DisplayFlyTos(k)
+			break
+		end
+	end
+	
+	--maybe they are searching for a larger area (zone)
+	if bIsLoc == false then
+		for k, v in pairs (FlyTos) do
+			if v["zone"] ~= nil and string.lower(v["zone"]) == string.lower(sThisLoc) then
+				bIsLoc = true
+				DisplayFlyTos(k)
+			end
+		end
+	end
+	if bIsLoc == false then
+		ColourNote(cText, "", "No flytos known for '" .. wildcards[1] .. "'.")
+	end
+end
+
+function DisplayFlyTos(sLoc)
+	if FlyTos[sLoc]["warning"] ~= nil then
+		ColourNote("red", "", FlyTos[sLoc]["warning"])
+	end
+	
+	ColourNote(cText, "", "Flytos for: " ..sLoc)
+	local iCount = 0
+	for i, v in ipairs (FlyTos[sLoc]) do
+		ColourTell(cText, "", i .."] '" ..v[2] .. "' (" .. v[1]..")")
+		if v[4] ~= nil then
+			ColourTell(cText, "", " - " .. v[3])
+		end
+		Note("")
+	end
+	
+end
+
+function ChangeTextColour(sName, sLine, wildcards)
+	local sNewColour = PickColour (ColourNameToRGB(cText))
+	if sNewColour ~= -1 and sNewColour ~= ColourNameToRGB(cText) then
+		cText = RGBColourToName(sNewColour)
+		ColourNote(cText, "", "Flyto text colour set to '" .. cText .. "'.")
+	else
+		ColourNote(cText, "", "Flyto text colour unchanged.")
+	end
+end
+
+function OnPluginSaveState ()
+	SetVariable ("cText", cText)
+end
+
+cText = "springgreen"
+if GetVariable("cText") ~= nil then
+	cText = GetVariable("cText")
+end
+
+]]>
+</script> 
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^flyto (.+)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="5"
+   script="FindFlyTo"
+  > 
+  </alias>
+</aliases>
+<!--  Triggers  -->
+<triggers> 
+</triggers>
+  
+</muclient>

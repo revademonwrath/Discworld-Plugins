@@ -3,6 +3,7 @@
 
 <!-- ShieldMate, a miniwindow to display shields, by Reva -->
 <!-- Type "sm help" for the helpfile, right-click on the miniwindow for options -->
+<!-- Version 1.3 - added detection for horse -->
 <!-- Avaialble at: -->
 <!-- https://pastebin.com/NrH2tLM7 - copy to .xml file -->
 <!-- https://www.dropbox.com/s/rvvkexr2kulktqo/ShieldMate.xml?dl=0 - download -->
@@ -17,10 +18,10 @@
    language="Lua"
    purpose="Shield Assistant"
    date_written="2018-05-14"
-   date_modified="2019-06-03"
+   date_modified="2023-08-21"
    save_state="y"
    requires="4.84"
-   version="1.2"
+   version="1.3"
    >
 </plugin>
 <script>
@@ -166,6 +167,7 @@ function OnPluginSaveState ()
 	SetVariable("WINDATA", json.encode(WINDATA))
 	SetVariable("GroupMember", json.encode(GroupMember))
 	SetVariable("sShieldTypes", json.encode(sShieldTypes))
+	SetVariable("HorseInfo", json.encode(HorseInfo))
 	SetVariable("bDebug", tostring(bDebug))
 	SetVariable("bDisplayOld", tostring(bDisplayOld))
 	SetVariable("iTotalGroupMembers", tostring(iTotalGroupMembers))
@@ -210,6 +212,18 @@ if os.difftime (os.time (), LastSaved) <= 120 then
 		sShieldTypes = json.decode(GetVariable("sShieldTypes"))
 		EnableTimer("flash", true)
 	end
+end
+
+-- Recording horse stuff
+HorseInfo = {}
+if (GetVariable("HorseInfo") ~= nil) then
+	HorseInfo = json.decode(GetVariable("HorseInfo"))
+	--Note("Horse info restored, name = " .. HorseInfo["name"] .. ", colour = " .. HorseInfo["colour"])
+end
+function DetectHorseInfo(sName, sLine, wildcards)
+	HorseInfo["name"] = wildcards.horsename
+	HorseInfo["colour"] = wildcards.horsecolour
+	DebugNote("Horse info detected, name = " .. HorseInfo["name"] .. ", colour = " .. HorseInfo["colour"])
 end
 
 -- Recording a shield type
@@ -266,6 +280,12 @@ DebugNote(sName)
 		if bRecordFruitbat == true then
 			InsertMinionShieldMessage(sUsePlayerName, sShieldType, bStatus, "Fruitbat")
 		end
+	elseif HorseInfo["name"] ~= nil and string.match(string.lower(sUsePlayerName), string.lower(HorseInfo["name"])) then
+		--limit size to 12 letters like char names
+		InsertMinionShieldMessage(string.sub(sUsePlayerName, 1, 12), sShieldType, bStatus, "Fruitbat")
+	elseif HorseInfo["colour"] ~= nil and string.match(string.lower(sUsePlayerName), string.lower(HorseInfo["colour"])) then
+		--limit size to 12 letters like char names
+		InsertMinionShieldMessage(string.sub(sUsePlayerName, 1, 12), sShieldType, bStatus, "Fruitbat")
 	else
 		InsertShieldMessage(sUsePlayerName, sShieldType, bStatus)
 		if bTalkingWarningsAll == true or bTalkingWarningsYou == true then
@@ -273,7 +293,6 @@ DebugNote(sName)
 		end
 	end
 	UpdateWindow()
-  
 end
 
 function HandleTalkingMessages(sName, sType, bStatus)
@@ -1734,6 +1753,16 @@ UpdateWindow()
 
 <!--  Triggers  -->
 <triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<horsename>.+) the (?P<horsecolour>.+) horse\:$"
+   regexp="y"
+   sequence="12"
+   script="DetectHorseInfo"
+   name="HorseInfo"
+  >
+  </trigger>
 
   <!-- NEW TRIGGERS FROM QUOW'S -->
   <!-- TPA for YOU -->

@@ -283,7 +283,7 @@ DebugNote(sName)
 	elseif HorseInfo["name"] ~= nil and string.match(string.lower(sUsePlayerName), string.lower(HorseInfo["name"])) then
 		--limit size to 12 letters like char names
 		InsertShieldMessage(string.sub(HorseInfo["name"], 1, 12), sShieldType, bStatus)
-	elseif HorseInfo["colour"] ~= nil and string.match(string.lower(sUsePlayerName), string.lower(HorseInfo["colour"])) then
+	elseif HorseInfo["colour"] ~= nil and string.match(string.lower(sUsePlayerName), string.lower(HorseInfo["colour"] .. " horse")) then
 		--limit size to 12 letters like char names
 		InsertShieldMessage(string.sub(HorseInfo["name"], 1, 12), sShieldType, bStatus)
 	else

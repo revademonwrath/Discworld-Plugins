@@ -4,9 +4,9 @@
 <!-- ShieldMate, a miniwindow to display shields, by Reva -->
 <!-- Type "sm help" for the helpfile, right-click on the miniwindow for options -->
 <!-- Version 1.3 - added detection for horse -->
+<!-- Version 1.4 - added detection for all horses, this is somewhat irregular so may have issues, also should skip horses it is not detecting. -->
 <!-- Avaialble at: -->
-<!-- https://pastebin.com/NrH2tLM7 - copy to .xml file -->
-<!-- https://www.dropbox.com/s/rvvkexr2kulktqo/ShieldMate.xml?dl=0 - download -->
+<!-- Pastebin: https://pastebin.com/4hcc6hrA -->
 <!-- For Text-to-speech warning download http://www.gammon.com.au/files/mushclient/lua5.1_extras/luacom.zip and place in the same -->
 <!-- directory as MUSHclient.exe -->
 
@@ -89,6 +89,18 @@ bRecordFruitbat = false
 if GetVariable("bRecordFruitbat") == "true" then
 	bRecordFruitbat = true
 	iMiniwindowLines = iMiniwindowLines + 1
+end
+
+bRecordMyHorse = true
+if GetVariable("bRecordMyHorse") == "true" then
+	bRecordMyHorse = true
+	--iMiniwindowLines = iMiniwindowLines + 1
+end
+
+bRecordOtherHorse = false
+if GetVariable("bRecordOtherHorse") == "true" then
+	bRecordOtherHorse = true
+	--iMiniwindowLines = iMiniwindowLines + 1
 end
 
 function AddTextToSpeech()
@@ -177,6 +189,8 @@ function OnPluginSaveState ()
 	SetVariable("bRecordMSOther", tostring(bRecordMSOther))
 	SetVariable("bRecordSkeleton", tostring(bRecordSkeleton))
 	SetVariable("bRecordFruitbat", tostring(bRecordFruitbat))
+	SetVariable("bRecordMyHorse", tostring(bRecordMyHorse))
+	SetVariable("bRecordOtherHorse", tostring(bRecordOtherHorse))
 	SetVariable("bTalkingWarningsAll", tostring(bTalkingWarningsAll))
 	SetVariable("bTalkingWarningsYou", tostring(bTalkingWarningsYou))
 	SetVariable("LastSaved", os.time())
@@ -220,10 +234,32 @@ if (GetVariable("HorseInfo") ~= nil) then
 	HorseInfo = json.decode(GetVariable("HorseInfo"))
 	--Note("Horse info restored, name = " .. HorseInfo["name"] .. ", colour = " .. HorseInfo["colour"])
 end
-function DetectHorseInfo(sName, sLine, wildcards)
+
+function DetectMyHorseInfo(sName, sLine, wildcards)
 	HorseInfo["name"] = wildcards.horsename
 	HorseInfo["colour"] = wildcards.horsecolour
 	DebugNote("Horse info detected, name = " .. HorseInfo["name"] .. ", colour = " .. HorseInfo["colour"])
+end
+
+OtherHorseInfo = {}
+function DetectHorseInfo(sName, sLine, wildcards)
+	local bKnownHorse = false
+	if HorseInfo["name"] ~= nil and string.lower(HorseInfo["name"]) == string.lower(wildcards.horsename) then
+		bKnownHorse = true
+	else
+		for i, v in ipairs (OtherHorseInfo) do
+			if string.lower(v["name"]) == string.lower(wildcards.horsename) then
+				bKnownHorse = true
+			end
+		end
+	end
+	
+	if bKnownHorse == false then
+		DebugNote("New horse detected: " .. wildcards.horsename .. ", colour = " .. wildcards.horsecolour .. ".")
+		table.insert(OtherHorseInfo, {name = wildcards.horsename, colour = wildcards.horsecolour})
+	else
+		DebugNote("Old horse detected: " .. wildcards.horsename .. ", colour = " .. wildcards.horsecolour .. ".")
+	end
 end
 
 -- Recording a shield type
@@ -275,28 +311,65 @@ DebugNote(sName)
 	if sUsePlayerName == "the skeleton warrior" then
 		if bRecordSkeleton == true then
 			InsertMinionShieldMessage(sUsePlayerName, sShieldType, bStatus, "Skeleton")
+		else
+			return
 		end
 	elseif string.match(sUsePlayerName, "fruitbat$") then
 		if bRecordFruitbat == true then
 			InsertMinionShieldMessage(sUsePlayerName, sShieldType, bStatus, "Fruitbat")
+		else
+			return
 		end
 	elseif HorseInfo["name"] ~= nil and string.match(string.lower(sUsePlayerName), string.lower(HorseInfo["name"])) then
-		--limit size to 12 letters like char names
-		InsertShieldMessage(string.sub(HorseInfo["name"], 1, 12), sShieldType, bStatus)
+		if bRecordMyHorse == true then
+			--limit size to 12 letters like char names
+			InsertShieldMessage(string.sub(HorseInfo["name"], 1, 12), sShieldType, bStatus)
+		else
+			return
+		end
 	elseif HorseInfo["colour"] ~= nil and string.match(string.lower(sUsePlayerName), string.lower(HorseInfo["colour"] .. " horse")) then
 		--limit size to 12 letters like char names
 		InsertShieldMessage(string.sub(HorseInfo["name"], 1, 12), sShieldType, bStatus)
 	else
-		InsertShieldMessage(sUsePlayerName, sShieldType, bStatus)
-		if bTalkingWarningsAll == true or bTalkingWarningsYou == true then
-			HandleTalkingMessages(sUsePlayerName, sShieldType, bStatus)
+		for i, v in ipairs (OtherHorseInfo) do
+			if string.match(string.lower(sUsePlayerName), string.lower(v["name"])) then
+				if bRecordOtherHorse == true then
+					--limit size to 12 letters like char names
+					InsertShieldMessage(string.sub(v["name"], 1, 12), sShieldType, bStatus)
+				
+					if bTalkingWarningsAll == true or bTalkingWarningsYou == true then
+						HandleTalkingMessages(sUsePlayerName, sShieldType, bStatus)
+					end
+					
+					UpdateWindow()
+				end
+				return
+			elseif string.match(string.lower(sUsePlayerName), string.lower(v["colour"] .. " horse")) then
+				if bRecordOtherHorse == true then
+					--limit size to 12 letters like char names
+					InsertShieldMessage(string.sub(v["name"], 1, 12), sShieldType, bStatus)
+				
+					if bTalkingWarningsAll == true or bTalkingWarningsYou == true then
+						HandleTalkingMessages(sUsePlayerName, sShieldType, bStatus)
+					end
+				
+					UpdateWindow()
+					return
+				end
+			end
 		end
+
+		InsertShieldMessage(sUsePlayerName, sShieldType, bStatus)
+	end
+	
+	if bTalkingWarningsAll == true or bTalkingWarningsYou == true then
+		HandleTalkingMessages(sUsePlayerName, sShieldType, bStatus)
 	end
 	UpdateWindow()
 end
 
 function HandleTalkingMessages(sName, sType, bStatus)
---[[
+	--[[
 	for k, v in pairs (NPCList) do
 		if string.match(sName, v .. "$") then
 			return
@@ -914,6 +987,10 @@ function mouseup(flags, hotspot_id)
 			"Other",
 			"<",
 			">Minions",
+			">Horse",
+			"You",
+			"Other",
+			"<",
 			"Skeleton",
 			"Fruitbat",
 			"<",
@@ -962,23 +1039,29 @@ function mouseup(flags, hotspot_id)
 		if bRecordMSOther == true then
 			check(ms, 27)
 		end
-		if bRecordSkeleton == true then
-			check(ms, 30)
-		end
-		if bRecordFruitbat == true then
+		if bRecordMyHorse == true then
 			check(ms, 31)
 		end
+		if bRecordOtherHorse == true then
+			check(ms, 32)
+		end
+		if bRecordSkeleton == true then
+			check(ms, 34)
+		end
+		if bRecordFruitbat == true then
+			check(ms, 35)
+		end
 		if bDisplayOld == false then
-			check(ms, 36)
+			check(ms, 40)
 		else
-			check(ms, 37)
+			check(ms, 41)
 		end
 		if bTalkingWarningsYou == true then
-			check(ms, 43)
+			check(ms, 47)
 		end
 		if bTalkingWarningsAll == true then
-			check(ms, 44)
-			disable(ms, 43)
+			check(ms, 48)
+			disable(ms, 47)
 		end
 
 		local menu_text = table.concat(menu_strings, "|")
@@ -1085,6 +1168,18 @@ function mouseup(flags, hotspot_id)
 				bRecordMSOther = false
 			end
 		elseif result == 14 then
+			if bRecordMyHorse == false then
+				bRecordMyHorse = true
+			else
+				bRecordMyHorse = false
+			end
+		elseif result == 15 then
+			if bRecordOtherHorse == false then
+				bRecordOtherHorse = true
+			else
+				bRecordOtherHorse = false
+			end
+		elseif result == 16 then
 			if bRecordSkeleton == false then
 				bRecordSkeleton = true
 				iMiniwindowLines = iMiniwindowLines + 1
@@ -1094,7 +1189,7 @@ function mouseup(flags, hotspot_id)
 				iMiniwindowLines = iMiniwindowLines - 1
 				RecalcHeight()
 			end
-		elseif result == 15 then
+		elseif result == 17 then
 			if bRecordFruitbat == false then
 				bRecordFruitbat = true
 				iMiniwindowLines = iMiniwindowLines + 1
@@ -1104,11 +1199,11 @@ function mouseup(flags, hotspot_id)
 				iMiniwindowLines = iMiniwindowLines - 1
 				RecalcHeight()
 			end
-		elseif result == 16 then
-			bDisplayOld = false
-		elseif result == 17 then
-			bDisplayOld = true
 		elseif result == 18 then
+			bDisplayOld = false
+		elseif result == 19 then
+			bDisplayOld = true
+		elseif result == 20 then
 			DebugNote("Refreshing innactive members.")
 			for k, v in pairs (GroupMember) do
 				--if he has been inactive for more then 30 mins lets set to inactive
@@ -1117,30 +1212,30 @@ function mouseup(flags, hotspot_id)
 					iTotalGroupMembers = iTotalGroupMembers - 1
 				end
 			end
-		elseif result == 19 then
+		elseif result == 21 then
 			DebugNote("Refreshing fully.")
 			GroupMember = {}
 			Minion = {}
 			iTotalGroupMembers = 0
-		elseif result == 20 then
+		elseif result == 22 then
 			if bTalkingWarningsYou == true then
 				bTalkingWarningsYou = false
 			else
 				bTalkingWarningsYou = true
 				AddTextToSpeech()
 			end
-		elseif result == 21 then
+		elseif result == 23 then
 			if bTalkingWarningsAll == true then
 				bTalkingWarningsAll = false
 			else
 				bTalkingWarningsAll = true
 				AddTextToSpeech()
 			end
-		elseif result == 22 then
+		elseif result == 24 then
 			DebugNote("Reseting settings.")
 			ShieldMateReset()
 			--reset settings
-		elseif result == 23 then
+		elseif result == 25 then
 			--full reset
 			DebugNote("Reseting settings fully.")
 			GroupMember = {}
@@ -1628,7 +1723,7 @@ end
 
 --list of NPCs to ignore if their shields break, '-' replaces with '.' for wildcard matching
 NPCList = {
-"nonna", "wizard", "witch", "Dave the Necromancer", "hag", "Sadel Noctus", "Rahn.fara.wai", "golden chicken", "Nhj",
+"nonna", "wizard", "witch", "Dave the Necromancer", "hag", "Sadel Noctus", "Rahn.fara.wai", "golden chicken", "Nhj", "horse"
 }
 
 --List of titles to remove for those on verbose names, note titles that match partially, like Old and Old Man make sure to have the longer one first
@@ -1759,8 +1854,19 @@ UpdateWindow()
    match="^(?:> )?(?P<horsename>.+) the (?P<horsecolour>.+) horse\:$"
    regexp="y"
    sequence="12"
+   script="DetectMyHorseInfo"
+   name="MyHorseInfo"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="n"
+   match="^(?:> )?(?P<horsename>.+) the (?P<horsecolour>.+) horse.+moves? aggressively toward.+"
+   regexp="y"
+   sequence="12"
    script="DetectHorseInfo"
-   name="HorseInfo"
+   name="OtherHorseInfo"
   >
   </trigger>
 

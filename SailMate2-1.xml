@@ -4,7 +4,8 @@
 <!-- SailMate by Reva -->
 <!-- Timers for sail cooldown, stats for sailing speed and XP, and compass for Disc directions. -->
 <!-- Seperate miniwindows for each. -->
-<!-- v3.3 - Fixes for monster.   -->
+<!-- v1.3 - Fixes for monster.   -->
+<!-- v2.0 - Updated for XP Nuke.   -->
 
 <muclient>
 <plugin
@@ -14,10 +15,10 @@
    language="Lua"
    purpose="Sail Stats and Timers"
    date_written="2020-07-21"
-   date_modified="2020-08-20"
+   date_modified="2024-06-18"
    save_state="y"
    requires="4.84"
-   version="3.3"
+   version="2.1"
    >
 </plugin>
 <script>
@@ -206,7 +207,7 @@ function SailReset(sName, sLine, wildcards)
 		elseif SailStatWin["height"] ~= nil and SailStatWin["display"]["window"] == "sailing" and bIsSailing == true then 
 				WindowPosition(CompassWin["name"], 0, WindowInfo(SailStatWin["name"], 2) + SailStatWin["height"], miniwin.pos_center_all, 2)
 		else
-			if CompassWin["display_monster"] == true then
+			if SailStatWin["display_monster"] == true then
 				WindowPosition(CompassWin["name"], 0, (CompassWin["font_height"]*8) + (CompassWin["padding"] * 4), miniwin.pos_center_all, 2)
 			else
 				WindowPosition(CompassWin["name"], 0, (CompassWin["font_height"]*7) + (CompassWin["padding"] * 4), miniwin.pos_center_all, 2)
@@ -303,14 +304,6 @@ function OnPluginInstall()
 	CreateCompassWin()
 end
 
-
-
-StagesToNumber = {
-["first"] = 1,
-["second"] = 2,
-["third"] = 3,
-}
-
 function FormatElapsedTime(iStart, iFinish)
 	if iStart == nil or iFinish == nil then
 		return "??"
@@ -372,75 +365,11 @@ function TimeFormatCD(iSeconds)
 end
 
 LastSail = {}
-PrepSail = {}
---This triggers on the accept message where the game timer seems to start, however there may be someone else in the room.
---Changed to only prep so stats only reset as you board the boat.
-function RealStartSail (sName, sLine, wildcards)
-	--this is to try weeding out if he says it to someone else, we'll start timer but check that it makes sense later
-	bUncertainStart = false
-	--manual testing how long this takes
-	--iTestTime = GetInfo(232)
-	--well, now we know...
-	if wildcards.who == "you" then
-		--bIsSailing = true
-				
---[[
-		if SailStatWin["display"]["window"] ~= "never" then
-			EnableTimer("sailstatwin_tic", true)
-			WindowShow(SailStatWin["name"], true)
-		end
-]]--		
-		EnableTriggerGroup("MidSail", true)
-
-		--save as last, clear table
-		--LastSail = Sail
-		PrepSail = {
-		["monster"] = {}
-		}
-		local stage_name = "Search"
-		local start_time = GetInfo(232)
-		local end_time = 0
-		--local start_xp = iCurrentXp or 0
-		--local end_xp = 0
-		local xp_gained = 0
-	
-		table.insert(PrepSail, {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained})
-
-		if SailStatWin["display"]["notes"] == true then
-			ColourTell(SailStatWin["colour"]["text2"], "", "[")
-			ColourTell(SailStatWin["colour"]["text1"], "", "Starting Sail Timer")
-			ColourNote(SailStatWin["colour"]["text2"], "", "]")
-		end
-		--if SailStatWin["display"]["window"] ~= "never" then
-			--UpdateSailStatWin()
-		--end
-	else
-		bUncertainStart = true
-		iUncertainTime = GetInfo(232)
-	end
-	--Note("bUnc = " .. tostring(bUncertainStart))
-	--bIsSailing = true
-	--EnableTriggerGroup("MidSail", true)
-end
 
 --This is when you board the boat
 function StartSail (sName, sLine, wildcards)
 	bIsSailing = true
 	EnableTimer("sailstatwin_tic", true)
-
-	--in case of missing the real start, not understanding language, etc.
-	--REMOVED, Unsure what it was doing...
-	--[[
-	if iUncertainTime == nil then 
-		iUncertainTime = GetInfo(232)
-		bUncertainStart = true
-	end
-	]]--
-	--Note("bUnc = " .. tostring(bUncertainStart))
-
-	--if iTestTime ~= nil then 
-		--Note("Test time is: " .. FormatElapsedTime(iTestTime, GetInfo(232)))
-	--end
 
 	EnableTriggerGroup("MidSail", true)
 
@@ -452,68 +381,49 @@ function StartSail (sName, sLine, wildcards)
 	--save as last, clear table
 	LastSail = Sail
 
-	if bUncertainStart == true then
-
-		Sail =	{
+	Sail =	{
 		["monster"] = {}
-		}
-		local stage_name = "Search"
-		local start_time = GetInfo(232)
-		local end_time = 0
-		local xp_gained = 0
+	}
+	local stage_name = "Search"
+	local start_time = GetInfo(232) - 12
+	local end_time = 0
+	local xp_gained = 0
 
-		--if so assume that was our queue... if not we'll just have to wing it, seems it is 11s
-		if start_time - iUncertainTime <= 13 and start_time - iUncertainTime >= 9 then
-			--Note("Reverting to old time...")
-			start_time = iUncertainTime
-		else
-			--Note("Using default 11")
-			start_time = start_time - 11
-		end
-		
-		table.insert(Sail, {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained})
+	Sail[1] = {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained}
 	
-		if SailStatWin["display"]["notes"] == true then
-			ColourTell(SailStatWin["colour"]["text2"], "", "[")
-			ColourTell(SailStatWin["colour"]["text1"], "", "Starting Sail Timer ("..FormatElapsedTime(start_time, GetInfo(232))..")")
-			ColourNote(SailStatWin["colour"]["text2"], "", "]")
-		end
-		EnableTriggerGroup("MidSail", true)
-		if SailStatWin["display"]["window"] ~= "never" then
-			UpdateSailStatWin()
-		end
-		bUncertainStart = false
-	else
-		Sail = PrepSail
+	if SailStatWin["display"]["notes"] == true then
+		ColourTell(SailStatWin["colour"]["text2"], "", "[")
+		ColourTell(SailStatWin["colour"]["text1"], "", "Starting Sail Timer ("..FormatElapsedTime(start_time, GetInfo(232))..")")
+		ColourNote(SailStatWin["colour"]["text2"], "", "]")
 	end
+
+	EnableTriggerGroup("MidSail", true)
+	if SailStatWin["display"]["window"] ~= "never" then
+		UpdateSailStatWin()
+	end
+
 	--Create cooldown timer, calc is 2 hrs from start.
 	local iSeconds = 7200 - (GetInfo(232) - Sail[1]["start"])
-	--Note("Cooldown at: " .. iSeconds)
 	CreateCooldownTimers(iSeconds)
-
 end
 
 function FinishSearch(sName, sLine, wildcards, styles)
---Note("search finished...")
 	if bIsSailing == false then 
 		EnableTriggerGroup("MidSail", false)
 		return 
 	end
 	
 	--finish stats from previous stage
-	Sail[#Sail]["end"] = GetInfo(232)
-	--Sail[#Sail]["end_xp"] = iCurrentXp
-	DisplayStageStats(#Sail)
+	Sail[1]["end"] = GetInfo(232)
+	DisplayStageStats(1)
 
 	--now to deal with the new stage...
 	local stage_name = "Leg 1"
 	local start_time = GetInfo(232)
 	local end_time = 0
-	--local start_xp = iCurrentXp or 0
-	--local end_xp = 0
 	local xp_gained = 0
 
-	table.insert(Sail, {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained})
+	Sail[2] = {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained, ["bNuked"] = false}
 
 	if SailStatWin["display"]["window"] ~= "never" then
 		UpdateSailStatWin()
@@ -522,31 +432,59 @@ function FinishSearch(sName, sLine, wildcards, styles)
 	EnableTrigger("FirstMovement", false)
 end
 
-function FinishStage(sName, sLine, wildcards, styles)
+function FinishStageOne(sName, sLine, wildcards, styles)
 	if bIsSailing == false then 
 		EnableTriggerGroup("MidSail", false)
 		return 
 	end
 	
 	--finish stats from previous stage
-	Sail[#Sail]["end"] = GetInfo(232)
-	Sail[#Sail]["xp_gained"] = tonumber(wildcards.xp)
-	DisplayStageStats(#Sail)
+	Sail[2]["end"] = GetInfo(232)
+	Sail[2]["xp_gained"] = tonumber(wildcards.xp)
+	if wildcards.nuked ~= "" then
+		Sail[2]["bNuked"] = true
+	end
+	DisplayStageStats(2)
 
-	local stage_name = "Leg " .. tostring(StagesToNumber[wildcards.stage] + 1)
+	local stage_name = "Leg 2"
 	local start_time = GetInfo(232)
 	local end_time = 0
 	local xp_gained = 0
 
-	--DisplayStageStats(#Sail)
-	table.insert(Sail, {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained})
+	Sail[3] = {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained, ["bNuked"] = false}
+	
+	if SailStatWin["display"]["window"] ~= "never" then
+		UpdateSailStatWin()
+	end
+end
+
+function FinishStageTwo(sName, sLine, wildcards, styles)
+	if bIsSailing == false then 
+		EnableTriggerGroup("MidSail", false)
+		return 
+	end
+	
+	--finish stats from previous stage
+	Sail[3]["end"] = GetInfo(232)
+	Sail[3]["xp_gained"] = tonumber(wildcards.xp)
+	if wildcards.nuked ~= "" then
+		Sail[3]["bNuked"] = true
+	end
+	DisplayStageStats(3)
+
+	local stage_name = "Leg 3"
+	local start_time = GetInfo(232)
+	local end_time = 0
+	local xp_gained = 0
+
+	Sail[4] = {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained, ["bNuked"] = false}
+	
 	if SailStatWin["display"]["window"] ~= "never" then
 		UpdateSailStatWin()
 	end
 end
 
 function MonsterStart(sName, sLine, wildcards, styles)
---Note("triggered")
 	if bIsSailing == false then 
 		EnableTriggerGroup("MidSail", false)
 		return 
@@ -566,7 +504,7 @@ function MonsterStart(sName, sLine, wildcards, styles)
 		end
 	end
 	
-	Sail["monster"] ={["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained, ["type"] = monster_type, ["mid"] = #Sail}
+	Sail["monster"] ={["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained, ["type"] = monster_type, ["mid"] = 4}
 
 	if SailStatWin["display"]["notes"] == true then
 		ColourTell(SailStatWin["colour"]["text2"], "", "[")
@@ -603,31 +541,11 @@ function MonsterEnd(sName, sLine, wildcards, styles)
 	
 	--finish monster stats
 	Sail["monster"]["end"] = GetInfo(232)
-	--Sail["monster"]["xp_gained"] = tonumber(wildcards.xp)
 	Sail["monster"]["type"] = monster_type
 
 	--set stage to when it left
 	Sail["monster"]["mid"] = #Sail
 
-	--Note("monster leaving...")
-	--[[
-	if SailStatWin["display"]["notes"] == true then
-		ColourTell(SailStatWin["colour"]["text2"], "", "[")
-		ColourTell(SailStatWin["colour"]["text1"], "", FirstToUpper(Sail["monster"]["type"]).." ")
-		ColourTell(SailStatWin["colour"]["text1"], "", "completed (Leg " .. tostring(#Sail - 1) .. "): ")
-		ColourTell(SailStatWin["colour"]["text1"], "", FormatElapsedTime(Sail["monster"]["start"], Sail["monster"]["end"]))
-		if Sail["monster"]["xp_gained"] ~= 0 then 
-			ColourTell(SailStatWin["colour"]["text1"], "", ", " .. tostring(AddCommas(Sail["monster"]["xp_gained"]))  .. " Xp")
-			ColourTell(SailStatWin["colour"]["text1"], "", " (" .. tostring(Kify(StageRate(Sail["monster"]))) .. " Xp/hr)")		
-		end
-
-		ColourNote(SailStatWin["colour"]["text2"], "", "]")
-	end
-	
-	if SailStatWin["display"]["window"] ~= "never" then
-		UpdateSailStatWin()
-	end
-	]]--
 end
 
 --this only triggers on the xp gained message if fought
@@ -675,6 +593,32 @@ function MonsterEndXP(sName, sLine, wildcards, styles)
 	end
 end
 
+function FinishStageThree(sName, sLine, wildcards, styles)
+	if bIsSailing == false then 
+		EnableTriggerGroup("MidSail", false)
+		return 
+	end
+	
+	--finish stats from previous stage
+	Sail[4]["end"] = GetInfo(232)
+	Sail[4]["xp_gained"] = tonumber(wildcards.xp)
+	if wildcards.nuked ~= "" then
+		Sail[4]["bNuked"] = true
+	end
+	DisplayStageStats(4)
+
+	local stage_name = "Leg 4"
+	local start_time = GetInfo(232)
+	local end_time = 0
+	local xp_gained = 0
+
+	Sail[5] = {["stage"] = stage_name, ["start"] = start_time, ["end"] = end_time, ["xp_gained"] = xp_gained, ["bNuked"] = false}
+	
+	if SailStatWin["display"]["window"] ~= "never" then
+		UpdateSailStatWin()
+	end
+end
+
 function FinishSail(sName, sLine, wildcards, styles)
 	if bIsSailing == false then 
 		EnableTriggerGroup("MidSail", false)
@@ -690,7 +634,7 @@ function FinishSail(sName, sLine, wildcards, styles)
 	bIsSailing = false
 
 	local iTotalXP = Sail["monster"]["xp_gained"] or 0
-	--local iTotalTime = 0
+
 	for i, v in ipairs (Sail) do
 		iTotalXP = iTotalXP + v["xp_gained"]
 	end
@@ -765,7 +709,7 @@ function SailFail(sName, sLine, wildcards)
 	bIsSailing = false
 
 	local iTotalXP = Sail["monster"]["xp_gained"] or 0
-	--local iTotalTime = 0
+
 	for i, v in ipairs (Sail) do
 		iTotalXP = iTotalXP + v["xp_gained"]
 	end
@@ -1271,54 +1215,6 @@ function Kify(nNum)
 	return sString
 end
 
-function RunTest()
-
-	Send([[
-frimble Chidder asks Nethuns in Ephebian with a nautical Ephebian accent: For this, we'll need a group of skilled sailors, carpenters, navigators and dragon-wranglers - this isn't a job you can do alone.  A little skill with the harpoon and the breaststroke might be useful, too, for emergencies.  Are you and your friends up to it?
-frimble Nethuns says: yes
-frimble Chidder eyes Yosh, Nethuns and you over.
-frimble Chidder asks Nethuns in Ephebian with a nautical Ephebian accent: This is a hard job, Nethuns.  Are you quite sure you've got enough sailors?
-frimble Nethuns says: yes
-frimble Chidder says to you in Ephebian with a nautical Ephebian accent: Great!  We'll just get the ship ready.
-frimble The loading of the ship complete, Chidder wishes you a safe and profitable trip as you climb aboard the SS Unsinkable.
-frimble You feel the ship begin to move.
-	frimble As you finish the first leg of your impossible voyage, you feel your experiences settling into the back of your mind.  (112000 xp)
-	frimble As you complete the second leg of your impossible voyage, you feel your experiences settling into the back of your mind.  (112000 xp)
-	frimble A massive sea serpent crests from the water ahead of the ship, seawater sloughing off its dinner-plate-sized scales.  In a flash, it wraps the SS Unsinkable in its tail and eyes you as though you were its next meal - which you might well be, if you don't find a way to drive it off.
-frimble With that last blow, the sea serpent seems to decide that your ship isn't worth it.  It uncoils its tail, roars resignedly a last time, and dives back into the depths with a huge splash.
-	frimble As the kraken sinks back beneath the waves, you think about the experiences you've had so far.  (286646 xp)
-	frimble As you finish the third leg of your impossible voyage, you feel like the experience of sailing across the sea has been enlightening.  (155996 xp)
-	frimble The ship pulls into port.  You've arrived.
-	frimble You have been awarded 394736 experience points for delivering eight out of eight cargo crates to your destination, working with a group of three.
-	frimble Captain Smith exclaims to you with a nautical Ephebian accent: Everything looks to be in order.  Well done!
-	]])
-end
---[[
-You say: help
-Nethuns fishily asks you: you dled the new plguin?
-Chidder says to you in Ephebian with a nautical Ephebian accent: This rush delivery needs to be in Ankh-Morpork in four hours, and only our experimental dragon-powered ship, the SS Unsinkable, can make it there in time.
-Chidder asks you in Ephebian with a nautical Ephebian accent: For this, we'll need a group of skilled sailors, carpenters, navigators and dragon-wranglers - this isn't a job you can do alone.  A little skill with the harpoon and the breaststroke might be useful, too, for emergencies.  Are you and your friends up to it?
-Nethuns fishily tells you: to harvest me some data
-[Everlast] Rangi: yeh
-t nethuns yeah i think
-You tell Nethuns: yeah i think
-say yes
-You say: yes
-Chidder says to you in Ephebian with a nautical Ephebian accent: Great!  We'll just get the ship ready.
-
-]]--
-function RunTestII()
-
-	Send([[
-frimble Chidder says to you in Ephebian with a nautical Ephebian accent: Great!  We'll just get the ship ready.
-frimble The loading of the ship complete, Chidder wishes you a safe and profitable trip as you climb aboard the SS Unsinkable.
-frimble You feel the ship begin to move.
-frimble As you finish the first leg of your impossible voyage, you feel like the experience of sailing across the sea has been enlightening.  (83021 xp)
-frimble As you complete the second leg of your impossible voyage, you feel like the experience of sailing across the sea has been enlightening.  (74292 xp)
-frimble As you swim a little too far from the ship, a current catches you and sweeps you far out.  Soon, you can't see the ship any more, but manage to wash up on a beach before you drown.
-frimble You failed your mission because the SS Unsinkable was abandoned.
-]])
-end
 
 CompassPoints = {
 {"hubwards", "hub", "H"},
@@ -1578,7 +1474,6 @@ function UpdateSailStatWin()
 				end
 			end
 			if vData["xp_gained"] ~= 0 then 
-				--sText = sText ..", " .. tostring(Kify(vData["xp_gained"]))  .. " XP (" .. tostring(Kify(StageRate(vData))) .. " Xp/hr)"
 				if SailStatWin["display"]["xp_gained"] == true then 
 					sText = sText .. tostring(Kify(vData["xp_gained"])) .. " XP"
 					if SailStatWin["display"]["rate"] == true then
@@ -1595,14 +1490,12 @@ function UpdateSailStatWin()
 			end
 			WindowText (SailStatWin["name"], "f", sText, iIndent, SailStatWin["padding"] + (SailStatWin["font_height"] * (iLine - 1)), 0, 0,	ColourNameToRGB(SailStatWin["colour"]["text1"]), false) -- not Unicode
 			iLine = iLine + 1
-			--Note("")		
 
 			if SailStatWin["display_monster"] == true and Sail["monster"]["mid"] ~= nil and Sail["monster"]["mid"] == iStage then
 				if Sail["monster"]["xp_gained"] == 0 then
 					--we are mid monster...
 					if Sail["monster"]["end"] == 0 or GetInfo(232) - Sail["monster"]["end"] <= 1 then
 						local iIndent = SailStatWin["padding"]
-						--sText = FirstToUpper(Sail["monster"]["type"]) ..": "
 						sText = FirstToUpper(string.sub(Sail["monster"]["type"], 1, 5)) ..": "
 						if SailStatWin["display"]["time"] == true then
 							sText = sText .. FormatElapsedTime(Sail["monster"]["start"], GetInfo(232))
@@ -1611,7 +1504,6 @@ function UpdateSailStatWin()
 						WindowText (SailStatWin["name"], "f", sText, iIndent, SailStatWin["padding"] + (SailStatWin["font_height"] * (iLine - 1)), 0, 0, ColourNameToRGB(SailStatWin["colour"]["text1"]), false) -- not Unicode
 					--we finished and no xp, so must be skipped...
 					else
-						--Note("here")
 						local iIndent = SailStatWin["padding"]
 						WindowText (SailStatWin["name"], "f", "**", iIndent, SailStatWin["padding"] + (SailStatWin["font_height"] * (iLine - 1)), 0, 0,	ColourNameToRGB(SailStatWin["colour"]["text2"]), false) -- not Unicode
 						local iIndent = SailStatWin["padding"] + WindowTextWidth(SailStatWin["name"], "f", "** ")
@@ -1621,11 +1513,7 @@ function UpdateSailStatWin()
 					end
 				else
 					local iIndent = SailStatWin["padding"]
-					--WindowText (SailStatWin["name"], "f", "**", iIndent, SailStatWin["padding"] + (SailStatWin["font_height"] * (iLine - 1)), 0, 0,	ColourNameToRGB(SailStatWin["colour"]["text2"]), false) -- not Unicode
-					--local iIndent = SailStatWin["padding"] + WindowTextWidth(SailStatWin["name"], "f", "** ")
-					--sText = FirstToUpper(Sail["monster"]["type"]) ..": "
 					sText = FirstToUpper(string.sub(Sail["monster"]["type"], 1, 5)) ..": "
-					--sText = sText .. FormatElapsedTime(vData["start"], vData["end"])..", " ..tostring(Kify(vData["xp_gained"])).. " XP (" .. tostring(Kify(StageRate(vData))) .. " Xp/hr)"	
 
 					if SailStatWin["display"]["time"] == true then
 						sText = sText .. FormatElapsedTime(Sail["monster"]["start"], Sail["monster"]["end"])
@@ -1758,7 +1646,6 @@ end
 
 function ResizeCDWin()
 	CDWin["font_height"] = WindowFontInfo(CDWin["name"], "f", 1)
-	--Note("fh = " .. tostring(CDWin["font_height"]))
 
 	CDWin["height"] = CDWin["font_height"] + (CDWin["padding"] * 2)
 
@@ -1773,7 +1660,6 @@ end
 
 function ResizeSailStatWin()
 	SailStatWin["font_height"] = WindowFontInfo (SailStatWin["name"], "f", 1)
-	--Note("fh = " .. tostring(SailStatWin["font_height"]))
 
 	if SailStatWin["display_monster"] == true then
 		SailStatWin["height"] = (SailStatWin["font_height"]*7) + (SailStatWin["padding"] * 2)
@@ -1781,7 +1667,6 @@ function ResizeSailStatWin()
 		SailStatWin["height"] = (SailStatWin["font_height"]*6) + (SailStatWin["padding"] * 2)
 	end
 
-	--local sLongestText = "Total: 14:12s, 1.62m XP (2.55m XP/hr)"
 	local sLongestText = "Total: "
 	if SailStatWin["display"]["time"] == true then 
 		sLongestText = sLongestText .. "14:12s"
@@ -1810,10 +1695,8 @@ end
 
 function ResizeCompassWin()
 	CompassWin["font_height"] = WindowFontInfo (CompassWin["name"], "f", 1)
-	--Note("fh = " .. tostring(CompassWin["font_height"]))
 
 	CompassWin["height"] = (CompassWin["font_height"] * 7) + (CompassWin["padding"] * 2)
-
 
 	local sLongestText = "h"
 	local iCompassLength = 1
@@ -1929,16 +1812,12 @@ function CDWinMouseUp(flags, hotspot_id)
 		menu_string = menu_string ..	"All|"
 		menu_string = menu_string .."<|"
 
-		--Note("Menu Text = " .. menu_string)
-
 		result = WindowMenu (CDWin["name"], 
 			WindowInfo (CDWin["name"], 14),  -- x
 			WindowInfo (CDWin["name"], 15),   -- y
 			menu_string)
 
 		result = tonumber(result) or 0
-
-		--Note("Result = " .. result)
 
 		if result == 0 then
 		elseif result == 1 then
@@ -1948,7 +1827,6 @@ function CDWinMouseUp(flags, hotspot_id)
 			if CDWin["notes"]["show"] == true then
 				SMTell(CDWin["colour"]["text1"], "", "Notifications will still show at")
 				if #CDWin["notes"] > 0 then
-					--ColourTell(SailStatWin["colour"]["text1"], "", ", ")
 					for i, v in ipairs (CDWin["notes"]) do
 						if i ~= 1 then 
 							ColourTell(CDWin["colour"]["text1"], "", " and " .. tostring(v))
@@ -1963,8 +1841,6 @@ function CDWinMouseUp(flags, hotspot_id)
 					end	
 					ColourNote(CDWin["colour"]["text1"], "", "end of cooldown.")
 				end			
-			--else
-				--SMNote("Hiding cooldown window.  You can right-click on another window or use 'sail show cooldown' to show it again.")
 			end
 			CDWin["display"] = false
 			WindowShow(CDWin["name"], false)
@@ -2095,12 +1971,6 @@ function CDWinMouseUp(flags, hotspot_id)
 					else
 						CDWin["cd_text"] = text_result
 					end
-					--[[if text_result == "" then
-						--SMNote("Removing text from cooldown miniwindow.")
-					else
-						--SMNote("Changing cooldown miniwindow text to: " .. text_result)
-					end
-					]]--
 					CallPlugin("4ebe57445bbefe3429c562c4", "ResizeCDWin")
 					CallPlugin("4ebe57445bbefe3429c562c4", "UpdateCDWinStatic")
 				else
@@ -2110,7 +1980,6 @@ function CDWinMouseUp(flags, hotspot_id)
 		elseif result == 15 then
 			local chosen_colour = PickColour(ColourNameToRGB(CDWin["colour"]["text1"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CDWin["colour"]["text1"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow text1 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2121,7 +1990,6 @@ function CDWinMouseUp(flags, hotspot_id)
 		elseif result == 16 then
 			local chosen_colour = PickColour(ColourNameToRGB(CDWin["colour"]["text2"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CDWin["colour"]["text2"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow text2 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2132,7 +2000,6 @@ function CDWinMouseUp(flags, hotspot_id)
 		elseif result == 17 then
 			local chosen_colour = PickColour(ColourNameToRGB(CDWin["colour"]["border1"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CDWin["colour"]["border1"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow border1 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2143,7 +2010,6 @@ function CDWinMouseUp(flags, hotspot_id)
 		elseif result == 18 then
 			local chosen_colour = PickColour(ColourNameToRGB(CDWin["colour"]["border2"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CDWin["colour"]["border2"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow border2 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2154,7 +2020,6 @@ function CDWinMouseUp(flags, hotspot_id)
 		elseif result == 19 then
 			local chosen_colour = PickColour(ColourNameToRGB(CDWin["colour"]["back"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CDWin["colour"]["back"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow back is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2165,9 +2030,6 @@ function CDWinMouseUp(flags, hotspot_id)
 		elseif result <= 19 + (#CDWin["colour"]["time"]*2) then
 			if ((result - 19) % 2 == 0) then
 				local table_number = (result - 19) / 2
-				--Note("table number = " .. table_number)
-				--.....it is even
-				--result = 21... remove table 1?
 				if CDWin["colour"]["time"][table_number][1] == 1 then
 					SMNote("Removing " .. CDWin["colour"]["time"][table_number][2] .. " colour at " .. CDWin["colour"]["time"][table_number][1] .. " min.")
 				else
@@ -2176,12 +2038,9 @@ function CDWinMouseUp(flags, hotspot_id)
 				table.remove(CDWin["colour"]["time"], table_number)
 			else
 				local table_number = (result - 18) / 2
-				--Note("table number = " .. table_number)
 				local chosen_colour = PickColour(ColourNameToRGB(CDWin["colour"]["time"][table_number][2]))
 				if chosen_colour ~= -1 then
-					--Note("colour = " .. RGBColourToName(chosen_colour))
 					if CDWin["colour"]["time"][table_number][2] == RGBColourToName(chosen_colour) then
-						--CHANGE MESSAGE
 						if CDWin["colour"]["time"][table_number][1] == 1 then
 							SMNote("Colour for "..CDWin["colour"]["time"][table_number][1].. "mins is already: " .. RGBColourToName(chosen_colour))
 						else
@@ -2189,10 +2048,8 @@ function CDWinMouseUp(flags, hotspot_id)
 						end
 					else
 						CDWin["colour"]["time"][table_number][2] = RGBColourToName(chosen_colour)
-						--UpdateCDWinStatic()
 					end
 				end
-				--.....it is odd
 			end
 		elseif result == 20 + (#CDWin["colour"]["time"]*2) then
 			local time_result = tonumber(utils.inputbox ( "Enter number of minutes to change timer colour.", "Minutes", "", "", 0, {
@@ -2239,7 +2096,6 @@ function CDWinMouseUp(flags, hotspot_id)
 			else
 				SMNote("Cooldown warnings are already not displaying.")
 			end
-		--elseif result == 23 + (#CDWin["colour"]["time"]*2) then
 		elseif result <= 22 + (#CDWin["colour"]["time"]*2) + (#CDWin["notes"]) then
 			local table_number = result - (21 + (#CDWin["colour"]["time"]*2))
 			if CDWin["notes"][table_number] == 1 then
@@ -2324,7 +2180,6 @@ function CDWinDragMove(flags, hotspot_id)
 end -- CDWinDragMove
 
 function CDWinDragRelease(flags, hotspot_id)
-	--DebugNote("No longer dragging")
 	CDWin["dragging"] = false
 	
 	CDWin["pos_x"] = WindowInfo (CDWin["name"], 10)
@@ -2408,16 +2263,12 @@ function SailStatWinMouseUp(flags, hotspot_id)
 		menu_string = menu_string ..	"All|"
 		menu_string = menu_string .."<|"
 
-		--Note("Menu Text = " .. menu_string)
-
 		result = WindowMenu (SailStatWin["name"], 
 			WindowInfo (SailStatWin["name"], 14),  -- x
 			WindowInfo (SailStatWin["name"], 15),   -- y
 			menu_string)
 
 		result = tonumber(result) or 0
-
-		--Note("Result = " .. result)
 
 		if result == 0 then
 		elseif result == 1 then
@@ -2551,7 +2402,6 @@ function SailStatWinMouseUp(flags, hotspot_id)
 		elseif result == 16 then
 			local chosen_colour = PickColour(ColourNameToRGB(SailStatWin["colour"]["text1"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if SailStatWin["colour"]["text1"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow text1 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2562,7 +2412,6 @@ function SailStatWinMouseUp(flags, hotspot_id)
 		elseif result == 17 then
 			local chosen_colour = PickColour(ColourNameToRGB(SailStatWin["colour"]["text2"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if SailStatWin["colour"]["text2"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow text2 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2573,7 +2422,6 @@ function SailStatWinMouseUp(flags, hotspot_id)
 		elseif result == 18 then
 			local chosen_colour = PickColour(ColourNameToRGB(SailStatWin["colour"]["border1"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if SailStatWin["colour"]["border1"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow border1 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2584,7 +2432,6 @@ function SailStatWinMouseUp(flags, hotspot_id)
 		elseif result == 19 then
 			local chosen_colour = PickColour(ColourNameToRGB(SailStatWin["colour"]["border2"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if SailStatWin["colour"]["border2"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow border2 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2595,7 +2442,6 @@ function SailStatWinMouseUp(flags, hotspot_id)
 		elseif result == 20 then
 			local chosen_colour = PickColour(ColourNameToRGB(SailStatWin["colour"]["back"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if SailStatWin["colour"]["back"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow back is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2700,27 +2546,6 @@ end -- mousedown
 function CompassWinMouseUp(flags, hotspot_id)
 	if (hotspot_id == "whole") and (flags == miniwin.hotspot_got_rh_mouse ) then
 
---[[
-CompassWin = {
-["name"] = "compass" .. GetPluginID (),
-["font"] = "Consolas",
-["font_size"] = 9,
-["padding"] = 2.5,
-["colour"] = {
-	["text1"] = "limegreen",
-	--["text2"] = "white",
-	["border1"] = "limegreen",
-	["border2"] = "green",
-	["back"] = "black",
-	},
-["north"] = "hubwards",
-["size"] = "medium", --full, medium, short
-["display"] = "always",--always, sailing, never
-["dragging"] = false,
-}
-
-]]--
-
 		local menu_string = "!Help|"
 		menu_string = menu_string .."Hide|"
 		menu_string = menu_string ..">Settings|"
@@ -2764,16 +2589,12 @@ CompassWin = {
 		menu_string = menu_string ..	"All|"
 		menu_string = menu_string .."<|"
 
-		--Note("Menu Text = " .. menu_string)
-
 		result = WindowMenu (CompassWin["name"], 
 			WindowInfo (CompassWin["name"], 14),  -- x
 			WindowInfo (CompassWin["name"], 15),   -- y
 			menu_string)
 
 		result = tonumber(result) or 0
-
-		--Note("Result = " .. result)
 
 		if result == 0 then
 		elseif result == 1 then
@@ -2896,7 +2717,6 @@ CompassWin = {
 		elseif result == 12 then
 			local chosen_colour = PickColour(ColourNameToRGB(CompassWin["colour"]["text1"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CompassWin["colour"]["text1"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow text1 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2907,7 +2727,6 @@ CompassWin = {
 		elseif result == 13 then
 			local chosen_colour = PickColour(ColourNameToRGB(CompassWin["colour"]["border1"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CompassWin["colour"]["border1"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow border1 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2918,7 +2737,6 @@ CompassWin = {
 		elseif result == 14 then
 			local chosen_colour = PickColour(ColourNameToRGB(CompassWin["colour"]["border2"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CompassWin["colour"]["border2"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow border2 is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2929,7 +2747,6 @@ CompassWin = {
 		elseif result == 15 then
 			local chosen_colour = PickColour(ColourNameToRGB(CompassWin["colour"]["back"]))
 			if chosen_colour ~= -1 then
-				--Note("colour = " .. RGBColourToName(chosen_colour))
 				if CompassWin["colour"]["back"] == RGBColourToName(chosen_colour) then
 					SMNote("Cooldown miniwindow back is already: " .. RGBColourToName(chosen_colour))
 				else
@@ -2990,7 +2807,6 @@ function CompassWinDragMove(flags, hotspot_id)
 end -- CompassWinDragMove
 
 function CompassWinDragRelease(flags, hotspot_id)
-	--DebugNote("No longer dragging")
 	CompassWin["dragging"] = false
 	
 	CompassWin["pos_x"] = WindowInfo (CompassWin["name"], 10)
@@ -3067,7 +2883,6 @@ CompassWin = {
 ["padding"] = 2.5,
 ["colour"] = {
 	["text1"] = "limegreen",
-	--["text2"] = "white",
 	["border1"] = "limegreen",
 	["border2"] = "green",
 	["back"] = "black",
@@ -3093,7 +2908,6 @@ function CreateCDWin()
 
 	WindowResize(CDWin["name"], CDWin["width"], CDWin["height"], ColourNameToRGB(CDWin["colour"]["back"]))
 
-	--Note("x = " .. tostring(CDWin["pos_x"]).. "|y = " .. tostring(CDWin["pos_y"]))
 	if CDWin["pos_x"] ~= nil and CDWin["pos_x"] ~= nil then
 		WindowPosition(CDWin["name"], CDWin["pos_x"], CDWin["pos_y"], miniwin.pos_center_all, 2)
 	else
@@ -3103,7 +2917,6 @@ function CreateCDWin()
 	if CDWin["display"] == true then
 		UpdateCDWinStatic()
 		WindowShow(CDWin["name"], true)
-		--EnableTimer("cdwin_tic", true)
 	end
 	WindowSetZOrder(CDWin["name"], 2001)
 end
@@ -3123,11 +2936,9 @@ function CreateSailStatWin()
 	end
 
 	ResizeSailStatWin()
-	--WindowResize(SailStatWin["name"], SailStatWin["width"], SailStatWin["height"], ColourNameToRGB(SailStatWin["colour"]["back"]))
 
 	if SailStatWin["pos_x"] ~= nil and SailStatWin["pos_x"] ~= nil then
 		WindowPosition(SailStatWin["name"], SailStatWin["pos_x"], SailStatWin["pos_y"], miniwin.pos_center_all, 2)
-	--default _under_ CDWin
 	else
 		if CDWin["pos_x"] == nil and CDWin["pos_x"] == nil then
 			if CDWin["height"] ~= nil and CDWin["display"] == true then
@@ -3179,17 +2990,8 @@ function CreateCompassWin()
 
 	WindowResize(CompassWin["name"], CompassWin["width"], CompassWin["height"], ColourNameToRGB(CompassWin["colour"]["back"]))
 
-	--Note("x = " .. tostring(CompassWin["pos_x"]).. "|y = " .. tostring(CompassWin["pos_y"]))
---[[
 	if CompassWin["pos_x"] ~= nil and CompassWin["pos_x"] ~= nil then
 		WindowPosition(CompassWin["name"], CompassWin["pos_x"], CompassWin["pos_y"], miniwin.pos_center_all, 2)
-	else
-		WindowPosition(CompassWin["name"], 0, 0, miniwin.pos_center_all, 2)
-	end
-]]--
-	if CompassWin["pos_x"] ~= nil and CompassWin["pos_x"] ~= nil then
-		WindowPosition(CompassWin["name"], CompassWin["pos_x"], CompassWin["pos_y"], miniwin.pos_center_all, 2)
-	--default _under_ SailStatWin
 	else
 		if SailStatWin["pos_x"] == nil and SailStatWin["pos_x"] == nil then
 			if SailStatWin["height"] ~= nil and SailStatWin["display"]["window"] == "always" then
@@ -3456,7 +3258,7 @@ function ManualEndSail(sName, sLine, wildcards)
 	bIsSailing = false
 
 	local iTotalXP = Sail["monster"]["xp_gained"] or 0
-	--local iTotalTime = 0
+
 	for i, v in ipairs (Sail) do
 		iTotalXP = iTotalXP + v["xp_gained"]
 	end
@@ -3539,22 +3341,6 @@ end
      script="ChangeWinShowing"
     ></alias>
     <alias
-     match="^sail(mate)? test$"
-     enabled="y"
-	 regexp="y"
-     ignore_case="y"
-     sequence="30"
-     script="RunTest"
-    ></alias>
-    <alias
-     match="^sail(mate)? testii$"
-     enabled="y"
-	 regexp="y"
-     ignore_case="y"
-     sequence="30"
-     script="RunTestII"
-    ></alias>
-    <alias
      match="^sail(mate)? help"
      enabled="y"
 	 regexp="y"
@@ -3593,16 +3379,7 @@ end
    enabled="y"
    keep_evaluating="y"
    regexp="y"
-   match="^(?:Chidder|Captain Smith) says to (?P<who>.+) in Ephebian with a nautical Ephebian accent\: Great\!  We'll just get the ship ready\.$"
-   omit_from_output="n"
-   script="RealStartSail"
-   name="RealStartSail"
-  ></trigger>
-  <trigger
-   enabled="y"
-   keep_evaluating="y"
-   regexp="y"
-   match="^The loading of the ship complete, (Captain Smith|Chidder) wishes you a safe and profitable trip as you climb aboard the SS Unsinkable\.$"
+   match="^The loading of the ship complete, (?:Captain Smith|Chidder) wishes you a safe and profitable trip as you climb aboard the SS Unsinkable\.$"
    omit_from_output="n"
    script="StartSail"
    name="StartSail"
@@ -3618,16 +3395,38 @@ end
    name="FirstMovement"
    group="MidSail"
   ></trigger>
+  
   <trigger
    enabled="n"
    keep_evaluating="y"
    regexp="y"
-   match="^As you (?:finish|complete) the (?P<stage>first|second|third) leg of your impossible voyage,.+ \((?P<xp>\d+) xp\)$"
+   match="^As you (?:finish|complete) the (?P<stage>first) leg of your impossible voyage,.+?(?P<nuked>Nevertheless, a little nagging voice in the back of your mind tells you that your speed has been putting the engine under rather too much stress\.  )?\((?P<xp>\d+) xp\)$"
    omit_from_output="n"
-   script="FinishStage"
-   name="FinishStage"
+   script="FinishStageOne"
+   name="FinishStageOne"
    group="MidSail"
   ></trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^As you (?:finish|complete) the (?P<stage>second) leg of your impossible voyage,.+?(?P<nuked>Nevertheless, a little nagging voice in the back of your mind tells you that your speed has been putting the engine under rather too much stress\.  )?\((?P<xp>\d+) xp\)$"
+   omit_from_output="n"
+   script="FinishStageTwo"
+   name="FinishStageTwo"
+   group="MidSail"
+  ></trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^As you (?:finish|complete) the (?P<stage>third) leg of your impossible voyage,.+?(?P<nuked>Nevertheless, a little nagging voice in the back of your mind tells you that your speed has been putting the engine under rather too much stress\.  )?\((?P<xp>\d+) xp\)$"
+   omit_from_output="n"
+   script="FinishStageThree"
+   name="FinishStageThree"
+   group="MidSail"
+  ></trigger>
+
   <trigger
    enabled="n"
    keep_evaluating="y"
@@ -3704,22 +3503,11 @@ end
    enabled="n"
    keep_evaluating="y"
    regexp="y"
-   match="^You have been awarded (?P<xp>\d+) experience points for delivering (?P<crates>\w+) out of eight cargo crates to your destination, working with a group of (?P<group>\w+)\.$"
+   match="^As you complete the final leg of your impossible voyage, you feel your experiences settling into the back of your mind\.  (?P<nuked>Nevertheless, a little nagging voice in the back of your mind tells you that your speed has been putting the engine under rather too much stress\.  )?\((?P<xp>\d+) xp\)$"
    sequence="12"
    omit_from_output="n"
    script="FinishSail"
    name="FinishSailReward"
-   group="MidSail"
-  ></trigger>
-  <trigger
-   enabled="n"
-   keep_evaluating="y"
-   regexp="y"
-   match="^You have been awarded (?P<xp>\d+) experience points for delivering your cargo to your destination in time\.$"
-   sequence="12"
-   omit_from_output="n"
-   script="FinishSail"
-   name="FinishSailRewardII"
    group="MidSail"
   ></trigger>
   <trigger

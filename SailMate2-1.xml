@@ -3503,7 +3503,7 @@ end
    enabled="n"
    keep_evaluating="y"
    regexp="y"
-   match="^As you complete the final leg of your impossible voyage, you feel your experiences settling into the back of your mind\.  (?P<nuked>Nevertheless, a little nagging voice in the back of your mind tells you that your speed has been putting the engine under rather too much stress\.  )?\((?P<xp>\d+) xp\)$"
+   match="^As you (?:finish|complete) the final leg of your impossible voyage,.+?(?P<nuked>Nevertheless, a little nagging voice in the back of your mind tells you that your speed has been putting the engine under rather too much stress\.  )?\((?P<xp>\d+) xp\)$"
    sequence="12"
    omit_from_output="n"
    script="FinishSail"

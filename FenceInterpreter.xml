@@ -5,6 +5,7 @@
 <!-- Specs: Adds simple dollar value at the end of Fence offer.   -->
 <!--        Display session total earned including current offer. -->
 <!--        Does NOT save.                                        -->
+<!-- v1.1 - Bugfix on coins with with non-English style multiples.  Thanks Charon for pointing it out!  -->
 
 <muclient>
 <plugin
@@ -15,7 +16,7 @@
    purpose="Convert Fence Offer to $"
    date_written="2019-07-23"
    requires="4.84"
-   version="1.0"
+   version="1.1"
    >
 </plugin>
 <!--  Aliases  -->
@@ -82,9 +83,11 @@ function ParseFenceOffer(sString, sReturnCity, sReturnCoins)
 				if iThisAmount ~= nil and sThisCity ~= nil and sThisCoinType ~= nil then
 					bMatched = true
 					iValue = iValue + (CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
-					break
+					--break
 				end
+				if bMatched == true then break end
 			end
+			if bMatched == true then break end
 		end
 		if bMatched == false then
 			--Note("Unmatched currency '".. v .. "', stoppping.")

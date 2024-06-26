@@ -6,7 +6,8 @@
 <!--        Display session total earned including current offer. -->
 <!--        Does NOT save.                                        -->
 <!-- V1.2 - bugfix in results, 'fence total reset' command added  -->
-<!-- v1.3 - Bugfix on coins with with non-English style multiples.  Thanks Charon for pointing it out!  -->
+<!-- V1.3 - bugfix in results for Ephebe currency                 -->
+<!-- v1.4 - Bugfix on coins with with non-English style multiples.  Thanks Charon for pointing it out!  -->
 
 <muclient>
 <plugin
@@ -17,9 +18,9 @@
    purpose="Convert Fence Offer to $"
    date_written="2019-07-23"
    requires="4.84"
-   version="1.3"
-</plugin>
+   version="1.4"
    >
+</plugin>
 <!--  Aliases  -->
 <aliases>
 </aliases>
@@ -36,7 +37,7 @@ CoinValuesByCity = {
 ["Agatean Empire"] = {["saveloy-rhinu"] = 4, ["quarter-rhinu"] = 120, ["half-rhinu"] = 240, ["rhinu"] = 480, ["ten-rhinu"] = 4800, ["fifty-rhinu"] = 24000},
 ["Ankh-Morpork"] = {["penny"] = 4, ["pence"] = 4, ["ten-pence"] = 40, ["half-dollar"] = 200, ["dollar"] = 400, ["ten-dollar"] = 4000, ["royal"] = 40000, ["crown"] = 3200000},
 ["Djelian"] = {["ptascp"] = 2, ["ptascpi"] = 2, ["talon"] = 20, ["talona"] = 20, ["toon"] = 200, ["tooni"] = 200, ["talent"] = 2000, ["ra"] = 20000, ["thanra"] = 100000},
-["Ephebian"] = {["derechmus"] = 2, ["derechmi"] = 2, ["hemiobolus"] = 8, ["hemioboli"] = 8, ["obolus"] = 16, ["oboli"] = 16, ["drachma"] = 96, ["drachmae"] = 96, ["stater"] = 192, ["decadrachma"] = 960, ["decadrachmae"] = 960, ["mina"] = 9600, ["minae"] = 9600, ["tyrant"] = 96000},
+["Ephebian"] = {["derechmus"] = 2, ["derechmi"] = 2, ["hemiobolus"] = 8, ["hemioboli"] = 8, ["obolus"] = 16, ["oboli"] = 16, ["drachma"] = 96, ["stater"] = 192, ["decadrachma"] = 960, ["mina"] = 9600, ["tyrant"] = 96000},
 ["Genuan"] = {["cent"] = 3, ["livre"] = 300, ["forin"] = 3000, ["ducat"] = 30000},
 ["Klatchian"] = {["para"] = 5, ["two para"] = 10, ["five para"] = 25, ["ten para"] = 50, ["fifty para"] = 250, ["dinar"] = 500, ["two dinar"] = 1000, ["five dinar"] = 2500, ["ten dinar"] = 5000, ["fifty dinar"] = 25000, ["hundred dinar"] = 50000, ["thousand dinar"] = 500000, ["toman"] = 5000000},
 ["Lancre"] = {["farthing"] = 3, ["ha'penny"] = 6, ["ha'pennies"] = 6, ["penny"] = 12, ["pennies"] = 12, ["tuppence"] = 24, ["thruppence"] = 36, ["sixpence"] = 72, ["shilling"] = 144, ["crown"] = 1728, ["tencrown"] = 17280, ["sovereign"] = 20736, ["hedgehog"] = 248832},
@@ -48,7 +49,6 @@ function ParseFenceOffer(sString, sReturnCity, sReturnCoins)
 	if sReturnCoins == nil then sReturnCoins = "dollar" end
 
 	local iValue = 0
-	--Note("sT = " .. sString)
 
 	for City, _ in pairs (CoinValuesByCity) do
 		local bMatched = false
@@ -106,7 +106,7 @@ function FenceNotAccepted (sName, sLine, wildcards, styles)
 	end
 end
 
-function AddCommas(iNum) -- credit                            
+function AddCommas(iNum) -- credit http://richard.warburton.it
 	local left,num,right = string.match(iNum,'^([^%d]*%d)(%d*)(.-)$')
 	return left..(num:reverse():gsub('(%d%d%d)','%1,'):reverse())..right
 end

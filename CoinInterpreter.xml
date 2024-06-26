@@ -62,7 +62,7 @@ CoinValuesByCity = {
 ["Agatean Empire"] = {["saveloy-rhinu"] = 4, ["quarter-rhinu"] = 120, ["half-rhinu"] = 240, ["rhinu"] = 480, ["ten-rhinu"] = 4800, ["fifty-rhinu"] = 24000},
 ["Ankh-Morpork"] = {["penny"] = 4, ["pence"] = 4, ["ten-pence"] = 40, ["half-dollar"] = 200, ["dollar"] = 400, ["ten-dollar"] = 4000, ["royal"] = 40000, ["crown"] = 3200000},
 ["Djelian"] = {["ptascp"] = 2, ["ptascpi"] = 2, ["talon"] = 20, ["talona"] = 20, ["toon"] = 200, ["tooni"] = 200, ["talent"] = 2000, ["ra"] = 20000, ["thanra"] = 100000},
-["Ephebian"] = {["derechmus"] = 2, ["derechmi"] = 2, ["hemiobolus"] = 8, ["hemioboli"] = 8, ["obolus"] = 16, ["oboli"] = 16, ["drachma"] = 96, ["drachmae"] = 96, ["stater"] = 192, ["decadrachma"] = 960, ["decadrachmae"] = 960, ["mina"] = 9600, ["minae"] = 9600, ["tyrant"] = 96000},
+["Ephebian"] = {["derechmus"] = 2, ["derechmi"] = 2, ["hemiobolus"] = 8, ["hemioboli"] = 8, ["obolus"] = 16, ["oboli"] = 16, ["drachma"] = 96, ["drachmae"] = 96, ["stater"] = 192, ["decadrachma"] = 960, ["mina"] = 9600, ["tyrant"] = 96000},
 ["Genuan"] = {["cent"] = 3, ["livre"] = 300, ["forin"] = 3000, ["ducat"] = 30000},
 ["Klatchian"] = {["para"] = 5, ["two para"] = 10, ["five para"] = 25, ["ten para"] = 50, ["fifty para"] = 250, ["dinar"] = 500, ["two dinar"] = 1000, ["five dinar"] = 2500, ["ten dinar"] = 5000, ["fifty dinar"] = 25000, ["hundred dinar"] = 50000, ["thousand dinar"] = 500000, ["toman"] = 5000000},
 ["Lancre"] = {["farthing"] = 3, ["ha'penny"] = 6, ["ha'pennies"] = 6, ["penny"] = 12, ["pennies"] = 12, ["tuppence"] = 24, ["thruppence"] = 36, ["sixpence"] = 72, ["shilling"] = 144, ["crown"] = 1728, ["tencrown"] = 17280, ["sovereign"] = 20736, ["hedgehog"] = 248832},
@@ -104,7 +104,7 @@ function ParseFenceOffer(sString, sReturnCity, sReturnCoins)
 	
 	
 	for _, v in ipairs(sWord) do
-		local bMatched = false
+		--local bMatched = false
 		for City, _ in pairs (CoinValuesByCity) do
 			for Coin, __ in pairs (CoinValuesByCity[City]) do
 				local sMatchString = "(%d+) ("..City..") (" .. Coin .. ")s?"
@@ -113,13 +113,13 @@ function ParseFenceOffer(sString, sReturnCity, sReturnCoins)
 
 				iThisAmount, sThisCity, sThisCoinType = string.match(v, sMatchString)
 				if iThisAmount ~= nil and sThisCity ~= nil and sThisCoinType ~= nil then
-					bMatched = true
+					--bMatched = true
 					iValue = iValue + (CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
-					--break
+					break
 				end
-				if bMatched == true then break end
+				--if bMatched == true then break end
 			end
-			if bMatched == true then break end
+			--if bMatched == true then break end
 		end
 		if bMatched == false then
 			--Note("Unmatched currency '".. v .. "', stoppping.")

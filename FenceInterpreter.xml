@@ -7,7 +7,6 @@
 <!--        Does NOT save.                                        -->
 <!-- V1.2 - bugfix in results, 'fence total reset' command added  -->
 <!-- V1.3 - bugfix in results for Ephebe currency                 -->
-<!-- v1.4 - Bugfix on coins with with non-English style multiples.  Thanks Charon for pointing it out!  -->
 
 <muclient>
 <plugin
@@ -18,7 +17,7 @@
    purpose="Convert Fence Offer to $"
    date_written="2019-07-23"
    requires="4.84"
-   version="1.4"
+   version="1.3"
    >
 </plugin>
 <!--  Aliases  -->
@@ -61,10 +60,10 @@ function ParseFenceOffer(sString, sReturnCity, sReturnCoins)
 			if iThisAmount ~= nil and sThisCity ~= nil and sThisCoinType ~= nil then
 				iValue = iValue + (CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
 				bMatched = true
-				break
+				--break
 			end
 		end
-		if iMatched == true then break end
+		--if bMatched == true then break end
 	end
 
 	return tonumber(string.format("%.2f", iValue / CoinValuesByCity[sReturnCity][sReturnCoins]))

@@ -6,6 +6,7 @@
 <!--        Display session total earned including current offer. -->
 <!--        Add $ Value to Purse in Inventory.                    -->
 <!-- v2.2 - Bugfix on coins with with non-English style multiples.  Thanks Charon for pointing it out!  -->
+<!-- v2.3 - Try to keep original text\background colours.  -->
 
 <muclient>
 <plugin
@@ -17,7 +18,7 @@
    date_written="2020-02-05"
    save_state="y"
    requires="4.84"
-   version="2.2"
+   version="2.3"
    >
 </plugin>
 <script>
@@ -179,47 +180,56 @@ function CapturePurseContents (sName, sLine, wildcards, styles)
 		Note("")
 		return
 	end
-		
+	
+	--try to detect original text\background colours
+	local cT = cText
+	local cB = ""
+	for _, v in ipairs (styles) do
+		cT = RGBColourToName (v.textcolour)
+		cB = RGBColourToName (v.backcolour)
+		break
+	end
+	
 	if #sPurse > 1 then
-		ColourTell(cText, "", "Your purse contains ")
+		ColourTell(cT, cB, "Your purse contains ")
 		for i, v in ipairs (sPurse) do
 			if i < #sPurse - 1 then
 				if sPurseShow == "full" then
-					ColourTell(cText, "", v[1])
+					ColourTell(cT, cB, v[1])
 					if v[2] ~= nil then
 						ColourTell(cPurseValueColour, "", "[$" .. v[2] .. "]")
 					end
-					ColourTell(cText, "", ",")
+					ColourTell(cT, cB, ",")
 				else
-					ColourTell(cText, "", v[1] .. ",")
+					ColourTell(cT, cB, v[1] .. ",")
 				end
 			elseif i == #sPurse - 1 then
 				if sPurseShow == "full" then
-					ColourTell(cText, "", v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
+					ColourTell(cT, cB, v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
 					if v[2] ~= nil then
-						ColourTell(cText, "", " and")
+						ColourTell(cT, cB, " and")
 					end
 				else
-					ColourTell(cText, "", v[1] .. " and ")
+					ColourTell(cT, cB, v[1] .. " and ")
 				end
 			else
 				if sPurseShow == "full" then
-					ColourTell(cText, "", v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
+					ColourTell(cT, cB, v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
 					if v[2] ~= nil then
-						ColourTell(cText, "", ".")
+						ColourTell(cT, cB, ".")
 					end
 				else
-					ColourTell(cText, "", v[1] .. ".")
+					ColourTell(cT, cB, v[1] .. ".")
 				end
 				ColourNote(cPurseValueColour, "", " [Total: $" .. iPurseTotal .. "]")
 			end
 		end
 	else
-		ColourTell(cText, "", "Your purse contains ".. sPurse[1][1])
+		ColourTell(cT, cB, "Your purse contains ".. sPurse[1][1])
 		if sPurse[1][2] ~= nil then
 			ColourTell(cPurseValueColour, "",  "[$" .. sPurse[1][2] .. "]")
 		end
-		ColourNote(cText, "", ".")
+		ColourNote(cT, cB, ".")
 	end
 end
 

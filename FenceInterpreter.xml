@@ -5,7 +5,8 @@
 <!-- Specs: Adds simple dollar value at the end of Fence offer.   -->
 <!--        Display session total earned including current offer. -->
 <!--        Does NOT save.                                        -->
-<!-- v1.1 - Bugfix on coins with with non-English style multiples.  Thanks Charon for pointing it out!  -->
+<!-- V1.2 - bugfix in results, 'fence total reset' command added  -->
+<!-- v1.3 - Bugfix on coins with with non-English style multiples.  Thanks Charon for pointing it out!  -->
 
 <muclient>
 <plugin
@@ -16,15 +17,15 @@
    purpose="Convert Fence Offer to $"
    date_written="2019-07-23"
    requires="4.84"
-   version="1.1"
-   >
+   version="1.3"
 </plugin>
+   >
 <!--  Aliases  -->
 <aliases>
 </aliases>
 <script>
 <![CDATA[
-cLowColour = "black"
+cLowColour = "white"
 cMediumColour = "dodgerblue"
 cHighColour = "limegreen"
 
@@ -45,55 +46,27 @@ CoinValuesByCity = {
 function ParseFenceOffer(sString, sReturnCity, sReturnCoins)
 	if sReturnCity == nil then sReturnCity = "Ankh-Morpork" end
 	if sReturnCoins == nil then sReturnCoins = "dollar" end
-	local sWord = {}
+
 	local iValue = 0
+	--Note("sT = " .. sString)
 
-	local sEndMatch = "(%d+ .+) and (%d+ .+)"
-	if string.match(sString, ",") ~= nil then
-		sEndMatch = ", " .. sEndMatch
-	end
-
-	sSecondToLast, sLast = string.match(sString, sEndMatch)
-
-	if sSecondToLast ~= nil and sLast ~= nil then
-		sString = string.sub(sString, 1 , string.len(sString) - (string.len(sSecondToLast) + string.len(sLast)) + 5)
-	else
-		table.insert(sWord, sString)
-	end
-
-	for k in string.gmatch(sString,'%d+ .-,') do 
-		table.insert(sWord, string.sub(k, 1, string.len(k)-1)) 
-	end
-
-	if sSecondToLast ~= nil and sLast ~= nil then
-		table.insert(sWord, sSecondToLast)
-		table.insert(sWord, sLast)
-	end
-	
-	
-	for _, v in ipairs(sWord) do
+	for City, _ in pairs (CoinValuesByCity) do
 		local bMatched = false
-		for City, _ in pairs (CoinValuesByCity) do
-			for Coin, __ in pairs (CoinValuesByCity[City]) do
-				local sMatchString = "(%d+) ("..City..") (" .. Coin .. ")s?"
-				sMatchString = string.gsub(sMatchString, "%-", "%%-")
-				
+		--Note(k)
+		for Coin, __ in pairs (CoinValuesByCity[City]) do
+			local sMatchString = "(%d+) ("..City..") (" .. Coin .. ")s?"
+			sMatchString = string.gsub(sMatchString, "%-", "%%-")
 
-				iThisAmount, sThisCity, sThisCoinType = string.match(v, sMatchString)
-				if iThisAmount ~= nil and sThisCity ~= nil and sThisCoinType ~= nil then
-					bMatched = true
-					iValue = iValue + (CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
-					--break
-				end
-				if bMatched == true then break end
+			iThisAmount, sThisCity, sThisCoinType = string.match(sString, sMatchString)
+			if iThisAmount ~= nil and sThisCity ~= nil and sThisCoinType ~= nil then
+				iValue = iValue + (CoinValuesByCity[sThisCity][sThisCoinType] * iThisAmount)
+				bMatched = true
+				break
 			end
-			if bMatched == true then break end
 		end
-		if bMatched == false then
-			--Note("Unmatched currency '".. v .. "', stoppping.")
-			return "error"
-		end
+		if iMatched == true then break end
 	end
+
 	return tonumber(string.format("%.2f", iValue / CoinValuesByCity[sReturnCity][sReturnCoins]))
 end
 
@@ -133,13 +106,33 @@ function FenceNotAccepted (sName, sLine, wildcards, styles)
 	end
 end
 
-function AddCommas(iNum) -- credit http://richard.warburton.it
+function AddCommas(iNum) -- credit                            
 	local left,num,right = string.match(iNum,'^([^%d]*%d)(%d*)(.-)$')
 	return left..(num:reverse():gsub('(%d%d%d)','%1,'):reverse())..right
 end
 
 ]]>
 </script> 
+<!--  Aliases  -->
+<aliases>
+    <alias
+        match="^fence? total reset$"
+		regexp="y"
+        enabled="y"
+        ignore_case="y"
+        sequence="30"
+		send_to="12"
+    >
+	<send>
+		if iTotal ~= 0 then
+			iTotal = 0
+			Note("FENCE INTERPRETER: Reset total fence value.")
+		else
+			Note("FENCE INTERPRETER: No fence value recorded.")
+		end
+	</send>
+	</alias>
+</aliases>
 <!--  Triggers  -->
 <triggers> 
   <trigger

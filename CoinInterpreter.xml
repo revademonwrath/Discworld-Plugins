@@ -166,12 +166,10 @@ function FenceNotAccepted (sName, sLine, wildcards, styles)
 	end
 end
 
-
 iPurseTotal = 0
 function CapturePurseContents (sName, sLine, wildcards, styles)
 	--Add conversion values and send to client
 	sPurse, iPurseTotal = RedoPurse(wildcards.coins, "Ankh-Morpork", "dollar")
-	
 	--If unrecognized currency will just replace the purse line
 	if iPurseTotal == -1 then
 		for _, v in ipairs (styles) do
@@ -194,45 +192,40 @@ function CapturePurseContents (sName, sLine, wildcards, styles)
 		ColourTell(cT, cB, "Your purse contains ")
 		for i, v in ipairs (sPurse) do
 			if i < #sPurse - 1 then
+				ColourTell(cT, cB, v[1])
 				if sPurseShow == "full" then
-					ColourTell(cT, cB, v[1])
 					if v[2] ~= nil then
-						ColourTell(cPurseValueColour, "", "[$" .. v[2] .. "]")
+						ColourTell(cPurseValueColour, cB, "[$" .. v[2] .. "]")
 					end
+				end
 					ColourTell(cT, cB, ",")
-				else
-					ColourTell(cT, cB, v[1] .. ",")
-				end
 			elseif i == #sPurse - 1 then
+				ColourTell(cT, cB, v[1])
 				if sPurseShow == "full" then
-					ColourTell(cT, cB, v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
 					if v[2] ~= nil then
-						ColourTell(cT, cB, " and")
+						ColourTell(cPurseValueColour, cB, "[$" .. v[2] .. "]")
 					end
-				else
-					ColourTell(cT, cB, v[1] .. " and ")
 				end
+				ColourTell(cT, cB, " and ")
 			else
+				ColourTell(cT, cB, v[1])
 				if sPurseShow == "full" then
-					ColourTell(cT, cB, v[1], cPurseValueColour, "", "[$" .. v[2] .. "]")
 					if v[2] ~= nil then
-						ColourTell(cT, cB, ".")
+						ColourTell(cPurseValueColour, cB, "[$" .. v[2] .. "]")
 					end
-				else
-					ColourTell(cT, cB, v[1] .. ".")
 				end
-				ColourNote(cPurseValueColour, "", " [Total: $" .. iPurseTotal .. "]")
+				ColourTell(cT, cB, ".")
+				ColourNote(cPurseValueColour, cB, " [Total: $" .. iPurseTotal .. "]")
 			end
 		end
 	else
 		ColourTell(cT, cB, "Your purse contains ".. sPurse[1][1])
 		if sPurse[1][2] ~= nil then
-			ColourTell(cPurseValueColour, "",  "[$" .. sPurse[1][2] .. "]")
+			ColourTell(cPurseValueColour, cB,  "[$" .. sPurse[1][2] .. "]")
 		end
 		ColourNote(cT, cB, ".")
 	end
 end
-
 --[[
 Your purse contains one Ankh-Morpork ten-dollar, 204 Ankh-Morpork dollars, 67 Ankh-Morpork half-dollars, 3 Agatean Empire ten-rhinu,
  222 Agatean Empire rhinu, 10 Djelian tooni, 6 Djelian talona, 46 Ephebian minae, 88 Ephebian decadrachmae, 209 Ephebian stater, 

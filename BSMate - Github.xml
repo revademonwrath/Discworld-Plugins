@@ -31,7 +31,7 @@ require "serialize"  -- needed to serialize table to string
 BSStats = {}
 assert (loadstring (GetVariable ("BSStats") or "")) ()
 
-cText = "black"
+cText = "white"
 cText2 = "limegreen"
 
 Filters = {
@@ -1430,4 +1430,5 @@ end -- DrawWindow
   ></trigger>
 </triggers>
   
+
 </muclient>

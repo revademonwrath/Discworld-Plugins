@@ -1,0 +1,1433 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- BackstabMate, Recording Stats on Backstabs, by Reva -->
+<!-- Three options, all stats, last, and filtered base on NPC name and\or weapon used. -->
+<!-- Cannot factor for single-weapon backstab seperately. -->
+
+<muclient>
+<plugin
+   name="BackstabMate"
+   author="Reva"
+   id="dede234ecb536ea429c562c4"
+   language="Lua"
+   purpose="Record Backstab Stats"
+   date_written="2025-10-10"
+   save_state="y"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<script>
+<![CDATA[
+----------------------
+-- PLUGIN STARTS HERE --
+----------------------
+ThisPluginID = "dede234ecb536ea429c562c4"
+
+require "json"
+require "serialize"  -- needed to serialize table to string
+
+BSStats = {}
+assert (loadstring (GetVariable ("BSStats") or "")) ()
+
+cText = "black"
+cText2 = "limegreen"
+
+Filters = {
+["victim"] = "Imperial guard",
+["weapon"] = "all",
+}
+if (GetVariable("Filters") ~= nil) then
+	Filters = json.decode(GetVariable("Filters"))
+end
+
+
+bLogging = true
+if (GetVariable("bLogging") ~= nil) then
+	if GetVariable("bLogging") == "false" then
+		bLogging = false
+	else
+		bLogging = true
+	end	
+end
+
+--It should catch weapon anyways on backstab, no reason to save that.
+sCurWeapon = "?"
+
+function BSMNote(sText)
+	ColourTell(cText, "", "[")
+	ColourTell(cText2, "", "BSM")
+	ColourTell(cText, "", "] ")
+	ColourNote(cText2, "", sText)
+end
+
+function ToggleLogging(sArg)
+	if sArg == "on" then
+		if bLogging == true then
+			BSMNote("Logging is already enabled.")
+		else
+			BSMNote("Logging is now enabled and should update on next backstab.")
+		end
+		bLogging = true
+	elseif sArg == "off" then
+		if bLogging == false then
+			BSMNote("Logging is already disable.")
+		else
+			BSMNote("Logging is now disabled and should no longer update.  To remove\hide the window either disable or uninstall the plugin.")
+		end
+		bLogging = false
+	end
+end
+
+function AddBackstabSuccess(sName, sLine, wildcards, styles)
+	if bLogging == false then return end
+	if sName == "BackstabSuccess" then
+		table.insert(BSStats, {["success"] = true, ["covert"] = false, ["victim"] = wildcards.victim, ["attacks_landed"] = 0, ["attacks_defended"] = 0, ["confused"] = "no", ["bs_weapon"] = "?", ["insta-gib"] = false, ["attack_data"] = {}})
+	else
+		table.insert(BSStats, {["success"] = true, ["covert"] = true, ["victim"] = wildcards.victim, ["attacks_landed"] = 0, ["attacks_defended"] = 0, ["confused"] = "no", ["bs_weapon"] = "?", ["insta-gib"] = false, ["attack_data"] = {}})
+	end
+
+	EnableTrigger("Confused", true)
+	EnableTrigger("BackstabAttackSuccess", true)
+	EnableTrigger("BackstabAttackSuccessII", true)
+
+	EnableTrigger("BackstabAttackFail", true)
+	EnableTrigger("EndOfBackstab", true)
+end
+
+function IsConfused(sName, sLine, wildcards, styles)
+
+	EnableTrigger("Confused", false)
+	if BSStats[#BSStats]["victim"] == wildcards.victim then
+		if wildcards.quite == nil or wildcards.quite == "" then
+			BSStats[#BSStats]["confused"] = "yes"
+		else
+			BSStats[#BSStats]["confused"] = "quite"
+		end
+	end
+end
+
+function AddBackstabAttackSuccess(sName, sLine, wildcards, styles)
+	EnableTrigger("Confused", false)
+
+	if BSStats[#BSStats] == nil then
+		EnableTrigger("Confused", false)
+		EnableTrigger("BackstabAttackSuccess", false)
+		EnableTrigger("BackstabAttackSuccessII", false)
+		EnableTrigger("BackstabAttackFail", false)
+		return
+	end
+	
+	BSStats[#BSStats]["attacks_landed"] = BSStats[#BSStats]["attacks_landed"] + 1
+	
+	local WepChange = "."
+	
+	if wildcards.weapon ~= nil and sCurWeapon ~= wildcards.weapon then
+		if sCurWeapon == "?" then
+			--go back if last one was a fail and update weapon, maybe check backwards until last success?
+			if 	BSStats[#BSStats-1] ~= nil and 	BSStats[#BSStats-1]["bs_weapon"] == "?" then
+				BSStats[#BSStats-1]["bs_weapon"] = wildcards.weapon
+			end
+		end		
+		WepChange = ", new weapon detected ("..wildcards.weapon..")."
+		sCurWeapon = wildcards.weapon
+	end
+
+	BSStats[#BSStats]["bs_weapon"] = sCurWeapon
+	
+end
+
+function AddBackstabAttackFail(sName, sLine, wildcards, styles)
+	EnableTrigger("Confused", false)
+	
+	BSStats[#BSStats]["attacks_defended"] = BSStats[#BSStats]["attacks_defended"] + 1
+	
+	local WepChange = "."
+	
+	if sCurWeapon ~= wildcards.weapon then
+		WepChange = ", new weapon detected ("..wildcards.weapon..")."
+		sCurWeapon = wildcards.weapon
+	
+	end
+
+	BSStats[#BSStats]["bs_weapon"] = wildcards.weapon
+	
+end
+
+function EndBackstab(sName, sLine, wildcards, styles)
+	EnableTrigger("Confused", false)
+	EnableTrigger("BackstabAttackSuccess", false)
+	EnableTrigger("BackstabAttackSuccessII", false)
+	EnableTrigger("BackstabAttackFail", false)
+	EnableTrigger("IsCovert", false)
+	EnableTrigger("EndOfBackstab", false)
+	
+	if string.match(sLine, "^You kill") then
+		BSStats[#BSStats]["insta-gib"] = true
+	else
+		--sometimes you get monitor but they still die next line, lets check that for insta--gib as well
+		EnableTrigger("AfterMonitorKill", true)
+	end
+
+	DrawWindow()
+end
+
+function AfterMonitorKill(sName, sLine)
+	EnableTrigger("AfterMonitorKill", false)
+
+	if string.match(sLine, "^You kill") then
+		BSStats[#BSStats]["insta-gib"] = true
+	end
+	DrawWindow()
+end
+
+function AddBackstabFail(sName, sLine, wildcards, styles)	
+	if bLogging == false then return end
+	table.insert(BSStats, {["success"] = false, ["covert"] = false, ["victim"] = wildcards.victim, ["attacks_landed"] = 0, ["attacks_defended"] = 0, ["confused"] = "no", ["bs_weapon"] = "?", ["attack_data"] = {}})
+
+	if sCurWeapon ~= "?" then
+		BSStats[#BSStats]["bs_weapon"] = sCurWeapon
+	end
+	
+	--backup to disable after 5 seconds?	
+	EnableTrigger("IsCovert", true)
+	EnableTrigger("EndOfBackstab", true)
+end
+
+function IsCovertBackstabFail(sName, sLine, wildcards, styles)	
+	BSStats[#BSStats]["covert"] = true
+	--backup to disable after 5 seconds?	
+	EnableTrigger("IsCovert", false)
+end
+
+function CalcBackstabStats()
+	Stats = {
+		["success"] = 0,
+		["covert"] = 0,
+		["confused"] = 0,
+		["attacks_landed"] = 0,
+		["attacks_defended"] = 0,
+		["insta-gib"] = 0
+	
+	}
+	
+	for i, v in ipairs(BSStats) do
+		if v["success"] == true then
+			Stats["success"] = Stats["success"] + 1
+		end
+		if v["covert"] == true then
+			Stats["covert"] = Stats["covert"] + 1
+		end
+		if v["confused"] ~= "no" then
+			Stats["confused"] = Stats["confused"] + 1
+		end
+		if v["insta-gib"] == true then
+			Stats["insta-gib"] = Stats["insta-gib"] + 1
+		end
+		Stats["attacks_landed"] = Stats["attacks_landed"] + v["attacks_landed"] 
+		Stats["attacks_defended"] = Stats["attacks_defended"] + v["attacks_defended"] 
+	end
+	
+	Stats["attacks_per_success"] = (Stats["attacks_landed"] + Stats["attacks_defended"]) / Stats["success"]
+	Stats["percented_attack_success"] = 100 / (Stats["attacks_landed"] + Stats["attacks_defended"]) * Stats["attacks_landed"] 
+
+	return Stats
+end
+
+tReplaceStrings = {
+	["^Hong"] = "[Agatean family]",
+	["^Fang"] = "[Agatean family]",
+	["^Tang"] = "[Agatean family]",
+	["^Sung"] = "[Agatean family]",
+	["^McSweeney"] = "[Agatean family]",
+	["^.+looking"] = "[Shaker]",
+
+}
+
+
+function CheckVictimMatch(Match, Victim)
+
+
+	for sFam, sGen in pairs (tReplaceStrings) do
+		Victim = string.gsub(Victim, sFam, sGen)
+	end
+	if Match == "all" then
+		return true
+	elseif CheckMatch(Match, Victim) == true then
+		return true
+	elseif CheckMatch(Match, Victim) == true then
+		return true
+	end
+	return false
+end
+
+function CheckWeaponMatch(Match, Weapon)
+	if Match == "all" then
+		return true
+	elseif CheckMatch(Match, Weapon) == true then
+		return true
+	end
+	return false
+end
+
+function CalcFilteredBackstabStats(VictimMatch, WeaponMatch)
+	FilteredStats = {
+		["total"] = 0,
+		["success"] = 0,
+		["covert"] = 0,
+		["confused"] = 0,
+		["attacks_landed"] = 0,
+		["attacks_defended"] = 0,
+		["insta-gib"] = 0
+	}
+	
+	for i, v in ipairs(BSStats) do
+		if CheckVictimMatch(VictimMatch, v["victim"]) == true and CheckWeaponMatch(WeaponMatch, v["bs_weapon"]) == true then
+			FilteredStats["total"] = FilteredStats["total"] + 1
+			
+			if v["success"] == true then
+				FilteredStats["success"] = FilteredStats["success"] + 1
+			end
+			if v["covert"] == true then
+				FilteredStats["covert"] = FilteredStats["covert"] + 1
+			end
+			if v["confused"] ~= "no" then
+				FilteredStats["confused"] = FilteredStats["confused"] + 1
+			end
+			if v["insta-gib"] == true then
+				FilteredStats["insta-gib"] = FilteredStats["insta-gib"] + 1
+			end
+			FilteredStats["attacks_landed"] = FilteredStats["attacks_landed"] + v["attacks_landed"] 
+			FilteredStats["attacks_defended"] = FilteredStats["attacks_defended"] + v["attacks_defended"] 
+		end
+	end
+	
+	FilteredStats["attacks_per_success"] = (FilteredStats["attacks_landed"] + FilteredStats["attacks_defended"]) / FilteredStats["success"]
+	FilteredStats["percented_attack_success"] = 100 / (FilteredStats["attacks_landed"] + FilteredStats["attacks_defended"]) * FilteredStats["attacks_landed"] 
+
+	return FilteredStats
+end
+
+
+function CheckMatch(word1, word2)
+    -- Lowercase both words for case-insensitive comparison
+    local w1 = word1:lower()
+    local w2 = word2:lower()
+
+	--check if last word matches, for NPCs with multiple adjectives
+	if string.sub(w2, -#w1) == w1 then
+        return true
+    end
+
+    -- Irregular plural to singular map
+    local irregulars = {
+        children = "child",
+        men = "man",
+        women = "woman",
+    }
+
+	
+    if irregulars[string.match(w2, "(%w+)$")] ~= nil and irregulars[string.match(w2, "(%w+)$")] == w1 then
+        return true
+    end
+
+    -- Handle common plural forms
+    local singular = w2
+
+    -- Ends in "ies" -> "y"
+    if w2:match("ies$") then
+        singular = w2:gsub("ies$", "y")
+    -- Ends in "ves" -> "f" or "fe"
+    elseif w2:match("ves$") then
+        singular = w2:gsub("ves$", "f")
+        if singular ~= w1 then
+            singular = w2:gsub("ves$", "fe")
+        end
+    -- Ends in "es" -> drop "es"
+    elseif w2:match("es$") then
+        singular = w2:gsub("es$", "")
+    -- Ends in "s" -> drop "s"
+    elseif w2:match("s$") then
+        singular = w2:gsub("s$", "")
+    end
+
+    --return singular == w1
+
+	if string.sub(singular, -#w1) == w1 then
+		return true
+	end
+	
+    if irregulars[string.match(singular, "(%w+)$")] ~= nil and irregulars[string.match(singular, "(%w+)$")] == w1 then
+		return true
+	end
+	
+	return false
+end
+
+function round(num, idp)
+  local mult = 10^(idp or 1)
+  return math.floor(num * mult + 0.5) / mult
+end
+
+function FirstToUpper(str)
+    return (string.gsub(str, "^%l", string.upper))
+end
+
+
+--always same varied titles, need to add more compplex version for npcs in different areas, specifically smugglers
+SimpleShortenList = {"hoplite", "hermit", "patroller", "mystic", "nomad", "mugger", "samurai", "ronin", "nobleman"}
+
+function OutputStats(sArg)
+	if sArg == nil or sArg == "" or sArg == "stats" or sArg == "full" then
+
+		if #BSStats ~= 0 then
+			local TheseStats = CalcBackstabStats()
+
+			local OutputTexts = {
+				{"Total:", 			#BSStats},
+				{"..covert:", 		TheseStats["covert"]},
+				{"Successful:", 	TheseStats["success"].."(" .. round(100 / #BSStats * TheseStats["success"]).."%)"},
+				{"..confused:", 	TheseStats["confused"].."(" .. round(100 / #BSStats * TheseStats["confused"]).."%)"},
+				{"..insta-kill:", 	TheseStats["insta-gib"].."(" .. round(100 / #BSStats * TheseStats["insta-gib"]).."%)"},
+				{"Attacks (Avg):", 	round(TheseStats["attacks_per_success"]).."(" .. TheseStats["attacks_landed"]+TheseStats["attacks_defended"]..")"},	
+				{"..landed: ", 		round(TheseStats["attacks_landed"]/TheseStats["success"]).."(" .. round(100 / TheseStats["attacks_per_success"] * (TheseStats["attacks_landed"]/TheseStats["success"])).."%)"},
+				{"..defended: ", 	round(TheseStats["attacks_defended"] / TheseStats["success"]) .."(" .. round(100 / TheseStats["attacks_per_success"] * (TheseStats["attacks_defended"] / TheseStats["success"])).."%)"}
+				}
+			
+			ColourNote(cText2, "", "Full Backstab Stats:")
+			ColourNote(cText2, "", "----]==============>")
+
+			local iLongestText = string.len("Attacks (Avg): ")
+			for i, v in ipairs (OutputTexts) do
+				ColourNote(cText, "", v[1] .. string.rep(" ", iLongestText - string.len(v[1])), cText2, "", v[2])
+			end
+				
+		else
+			ColourNote(cText2, "", "No backstab stats recorded.")
+			ColourNote(cText2, "", "Get stabbing!")
+		end
+			
+	elseif sArg == "last" then
+
+	if #BSStats ~= 0 then
+	
+
+		
+		local sResult = "fail"
+		if BSStats[#BSStats]["insta-gib"] == true then
+			sResult = "insta-kill"
+		elseif BSStats[#BSStats]["success"] == true then
+			sResult = "success"
+		end
+
+		local sCovert = "no"
+		if BSStats[#BSStats]["covert"] == true then
+			sCovert = "yes"
+		end
+
+		local sConfused = "N/A"
+		if BSStats[#BSStats]["success"] == true then
+			sConfused = BSStats[#BSStats]["confused"]
+		end
+		
+		local OutputTexts = {
+			--{"Victim:", BSStats[#BSStats]["victim"]},
+			--{"Weapon:", BSStats[#BSStats]["bs_weapon"]},
+			{"Result:", sResult},
+			{"..covert:", sCovert}, 
+			{"..confused:", sConfused},
+			{"Attacks:", BSStats[#BSStats]["attacks_landed"] + BSStats[#BSStats]["attacks_defended"]},
+			{"..landed:", BSStats[#BSStats]["attacks_landed"]},
+			{"..defended:", BSStats[#BSStats]["attacks_defended"]},
+			}
+			
+			ColourNote(cText2, "", "Last Backstab Stats:")
+			ColourNote(cText2, "", "----]==============>")
+			ColourNote(cText, "", "Victim: ", cText2, "", BSStats[#BSStats]["victim"])
+			ColourNote(cText, "", "Weapon: ", cText2, "", BSStats[#BSStats]["bs_weapon"])
+
+			local iLongestText = string.len("..confused: ")
+			for i, v in ipairs (OutputTexts) do
+				ColourNote(cText, "", v[1] .. string.rep(" ", iLongestText - string.len(v[1])), cText2, "", v[2])
+			end
+				
+		else
+			ColourNote(cText2, "", "No backstab stats recorded.")
+			ColourNote(cText2, "", "Get stabbing!")
+		end
+
+	elseif sArg == "filtered" or sArg == "filter" then
+
+
+		ColourNote(cText2, "", "Filtered Stats:")
+		ColourNote(cText2, "", "----]==============>")
+		ColourNote(cText, "", "Victim: ", cText2, "", Filters["victim"])
+		ColourNote(cText, "", "Weapon: ", cText2, "", Filters["weapon"])
+
+
+		if #BSStats ~= 0 then
+			local TheseFilteredStats = CalcFilteredBackstabStats(Filters["victim"], Filters["weapon"])
+			if TheseFilteredStats["total"] > 0 then
+		
+				local OutputTexts = {
+					{"Total:", TheseFilteredStats["total"]},
+					{"..covert:", TheseFilteredStats["covert"]},
+					{"Successful:", TheseFilteredStats["success"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["success"]).."%)"},
+					{"..confused:", TheseFilteredStats["confused"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["confused"]).."%)"},
+					{"..insta-kill:", TheseFilteredStats["insta-gib"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["insta-gib"]).."%)"},
+					{"Attacks (Avg):", round(TheseFilteredStats["attacks_per_success"]).."(" .. TheseFilteredStats["attacks_landed"]+TheseFilteredStats["attacks_defended"]..")"},
+					{"..landed:", round(TheseFilteredStats["attacks_landed"]/TheseFilteredStats["success"]).."(" .. round(100 / TheseFilteredStats["attacks_per_success"] * (TheseFilteredStats["attacks_landed"]/TheseFilteredStats["success"])).."%)"},
+					{"..defended:", round(TheseFilteredStats["attacks_defended"] / TheseFilteredStats["success"]) .."(" .. round(100 / TheseFilteredStats["attacks_per_success"] * (TheseFilteredStats["attacks_defended"] / TheseFilteredStats["success"])).."%)"},
+					}
+
+				local iLongestText = string.len("Attacks (Avg): ")
+				for i, v in ipairs (OutputTexts) do
+					ColourNote(cText, "", v[1] .. string.rep(" ", iLongestText - string.len(v[1])), cText2, "", v[2])
+				end
+
+			else
+				ColourNote(cText2, "", "No results found for above filters.")
+			end
+		else
+			ColourNote(cText2, "", "No backstab stats recorded.")
+			ColourNote(cText2, "", "Get stabbing!")
+		end
+
+	elseif sArg == "ByNPC" then
+				
+		local NPCTable = {}
+		for i, v in ipairs (BSStats) do
+			local sNew = v["victim"]
+			--local sNewTest = "Hong captain"
+			for sFam, sGen in pairs (tReplaceStrings) do
+				sNew = string.gsub(sNew, sFam, sGen)
+			end
+
+			for _, ShortName in ipairs(SimpleShortenList) do
+				if string.match(v["victim"], ShortName .. "$") then
+					sNew = ShortName
+				end
+			end
+			for ii, vv in ipairs (NPCTable) do
+				if sNew == vv or sNew .. "s" == vv or sNew == vv .. "s" then
+					sNew = "?"
+					break
+				end
+			end
+			if sNew ~= "?" then table.insert(NPCTable, sNew) end
+		end
+
+		function SortFunction(a, b)
+			-- remove leading non-alphanumeric characters like [ or (
+			a = string.match(a, "[%w].*") or a
+			b = string.match(b, "[%w].*") or b
+
+			-- lowercase comparison
+			return string.lower(a) < string.lower(b)
+		end
+
+		table.sort(NPCTable, SortFunction)
+		
+		Note("")
+		ColourNote(cText2, "", "Backstab Stats by NPC:")
+		ColourNote(cText2, "", "----]==============>")
+
+		if #BSStats ~= 0 then
+			for i, v in ipairs (NPCTable) do
+				local TheseFilteredStats = CalcFilteredBackstabStats(v, "all")
+		
+				ColourTell(cText, "", FirstToUpper(v), cText2, "", " - ")
+				local OutputTexts = {
+					{"Total:", TheseFilteredStats["total"]},
+					{"..covert:", TheseFilteredStats["covert"]},
+					{"Successful:", TheseFilteredStats["success"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["success"]).."%)"},
+					{"Attacks (Avg):", round(TheseFilteredStats["attacks_per_success"]).."(" .. TheseFilteredStats["attacks_landed"]+TheseFilteredStats["attacks_defended"]..")"},
+					}
+
+				local iLongestText = string.len("Attacks (Avg): ")
+				for i, v in ipairs (OutputTexts) do
+					ColourTell(cText, "", v[1] .. " ", cText2, "", v[2])
+					if i ~= #OutputTexts then 
+						ColourTell(cText, "", ", ") 
+					else
+						Note("")
+					end
+				end
+			end
+		else
+			ColourNote(cText2, "", "No backstab stats recorded.")
+			ColourNote(cText2, "", "Get stabbing!")
+		end
+		Note("")
+	elseif sArg == "ByWeapon" then
+
+		local WeaponTable = {}
+		for i, v in ipairs (BSStats) do
+			local sNew = v["bs_weapon"]
+			for ii, vv in ipairs (WeaponTable) do
+				if sNew == vv or sNew .. "s" == vv or sNew == vv .. "s" then
+					sNew = "?"
+					break
+				end
+			end
+			if sNew ~= "?" then table.insert(WeaponTable, sNew) end
+		end
+
+		function SortFunction(a, b)
+			return string.lower(a) < string.lower(b)
+		end
+
+		table.sort(WeaponTable, SortFunction)
+
+		Note("")
+		ColourNote(cText2, "", "Backstab Stats by Weapon:")
+		ColourNote(cText2, "", "----]==============>")
+
+		if #BSStats ~= 0 then
+			for i, v in ipairs (WeaponTable) do
+				local TheseFilteredStats = CalcFilteredBackstabStats("all", v)
+		
+				ColourTell(cText, "", FirstToUpper(v), cText2, "", " - ")
+				local OutputTexts = {
+					{"Total:", TheseFilteredStats["total"]},
+					{"..covert:", TheseFilteredStats["covert"]},
+					{"Successful:", TheseFilteredStats["success"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["success"]).."%)"},
+					{"Attacks (Avg):", round(TheseFilteredStats["attacks_per_success"]).."(" .. TheseFilteredStats["attacks_landed"]+TheseFilteredStats["attacks_defended"]..")"},
+					}
+
+				local iLongestText = string.len("Attacks (Avg): ")
+				for i, v in ipairs (OutputTexts) do
+					ColourTell(cText, "", v[1] .. " ", cText2, "", v[2])
+					if i ~= #OutputTexts then 
+						ColourTell(cText, "", ", ") 
+					else
+						Note("")
+					end
+				end
+			end
+		else
+			ColourNote(cText2, "", "No backstab stats recorded.")
+			ColourNote(cText2, "", "Get stabbing!")
+		end
+		Note("")
+	end
+end
+
+-- colours
+background_colour = ColourNameToRGB "black"
+frame_colour      = ColourNameToRGB "mediumorchid"
+title_bar_colour  = ColourNameToRGB "palegoldenrod"
+title_colour      = ColourNameToRGB "mediumblue"
+tab_colour        = ColourNameToRGB "grey"
+tab_text_colour   = ColourNameToRGB "white"
+
+-- miniwindow size
+window_width = 150
+window_height = 100
+
+-- gap between text in tabs
+tab_filler = 10
+-- -------------------------------------------------------------------------------
+-- Handlers for drawing the contents of each tab
+-- -------------------------------------------------------------------------------
+bShowDots = true
+function DrawStats (left, top, right, bottom)
+--[[
+Total:         100
+..covert       10
+Successful:    25(25%)
+..confused:    5 (5%)
+..insta-kill   5 (5%)
+Attacks (Avg): 3 (30000)
+..landed:      1 (33%)
+..defended:	   2 (67%)
+]]--
+	if #BSStats ~= 0 then
+		local TheseStats = CalcBackstabStats()
+		local iLongest =	WindowTextWidth (win, "fn", "Attacks (Avg): ")
+	
+		local iLine = 0
+		WindowText (win, "fn", "Total: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", #BSStats, 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..covert: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", TheseStats["covert"], 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "Successful: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", TheseStats["success"].."(" .. round(100 / #BSStats * TheseStats["success"]).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..confused: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", TheseStats["confused"].."(" .. round(100 / #BSStats * TheseStats["confused"]).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..insta-kill: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", TheseStats["insta-gib"].."(" .. round(100 / #BSStats * TheseStats["insta-gib"]).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "Attacks (Avg): ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", round(TheseStats["attacks_per_success"]).."(" .. TheseStats["attacks_landed"]+TheseStats["attacks_defended"]..")", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..landed: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", round(TheseStats["attacks_landed"]/TheseStats["success"]).."(" .. round(100 / TheseStats["attacks_per_success"] * (TheseStats["attacks_landed"]/TheseStats["success"])).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..defended: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", round(TheseStats["attacks_defended"] / TheseStats["success"]) .."(" .. round(100 / TheseStats["attacks_per_success"] * (TheseStats["attacks_defended"] / TheseStats["success"])).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+	else
+		local iLine = 1
+		WindowText (win, "fn", "No backstabs recorded.", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+		iLine = iLine + 1
+		WindowText (win, "fn", "Get stabbing!", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+	end
+end -- DrawStats
+
+function DrawLast (left, top, right, bottom)
+	--[[
+	[BS] Stats: {"victim":"citadel guard","covert":false,"success":true,"attack_data":{},"bs_weapon":"gold-veined kerises","confused":"no","attacks_landed":2,"attacks_defended":0}
+	Victim: Imperial Guard
+	Weapon: bronze keris
+	Covert: no
+	Result: fail
+	..confused: N\A
+	Attacks: 0
+	..landed: 0
+	..defended: 0
+]]--
+
+	if #BSStats ~= 0 then
+	
+		local iLongest =	WindowTextWidth (win, "fn", "..confused: ")
+		
+		local iLine = 0
+		WindowText (win, "fn", "Victim: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", BSStats[#BSStats]["victim"], 4 + WindowTextWidth (win, "fn", "Victim: "), (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "Weapon: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", BSStats[#BSStats]["bs_weapon"], 4 + WindowTextWidth (win, "fn", "Weapon: "), (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "Result: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		local sText = "fail"
+		
+		if BSStats[#BSStats]["insta-gib"] == true then
+			sText = "insta-kill"
+		elseif BSStats[#BSStats]["success"] == true then
+			sText = "success"
+		end
+		
+		WindowText (win, "fn", sText, 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..covert: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		local sText = "no"
+		if BSStats[#BSStats]["covert"] == true then
+			sText = "yes"
+		end
+		WindowText (win, "fn", sText, 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..confused: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		local sText = "N/A"
+		if BSStats[#BSStats]["success"] == true then
+			sText = BSStats[#BSStats]["confused"]
+		end
+		WindowText (win, "fn", sText, 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "Attacks: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", BSStats[#BSStats]["attacks_landed"] + BSStats[#BSStats]["attacks_defended"], 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..landed: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", BSStats[#BSStats]["attacks_landed"], 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "..defended: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", BSStats[#BSStats]["attacks_defended"], 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+	else
+		local iLine = 1
+		WindowText (win, "fn", "No backstabs recorded.", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+		iLine = iLine + 1
+		WindowText (win, "fn", "Get stabbing!", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+	end
+	
+end -- DrawLast
+
+
+function DrawFilter (left, top, right, bottom)	
+--[[
+Victim:	       Imperial guard
+Weapon: 	   all
+Succesful:     50/100(50%)
+..covert:      10
+..confused:    10(20%)
+Attacks (Avg): 3 (150)
+..landed:      1
+..defended:    1
+]]--
+
+		local iLine = 0
+		local iLongest =	WindowTextWidth (win, "fn", "Attacks (Avg): ")
+
+		WindowText (win, "fn", "Victim:", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", Filters["victim"], 4 + WindowTextWidth (win, "fn", "Victim: "), (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+		iLine = iLine + 1
+		WindowText (win, "fn", "Weapon: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+		WindowText (win, "fn", Filters["weapon"], 4 + WindowTextWidth (win, "fn", "Weapon: "), (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+
+	if #BSStats ~= 0 then
+		local TheseFilteredStats = CalcFilteredBackstabStats(Filters["victim"], Filters["weapon"])
+		if TheseFilteredStats["total"] > 0 then
+	
+			iLine = iLine + 1
+			WindowText (win, "fn", "Total: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", TheseFilteredStats["total"], 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+			iLine = iLine + 1
+			WindowText (win, "fn", "..covert: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", TheseFilteredStats["covert"], 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+			iLine = iLine + 1
+			WindowText (win, "fn", "Successful: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", TheseFilteredStats["success"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["success"]).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+			iLine = iLine + 1
+			WindowText (win, "fn", "..confused: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", TheseFilteredStats["confused"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["confused"]).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+			iLine = iLine + 1
+			WindowText (win, "fn", "..insta-kill: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", TheseFilteredStats["insta-gib"].."(" .. round(100 / TheseFilteredStats["total"] * TheseFilteredStats["insta-gib"]).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+			iLine = iLine + 1
+			WindowText (win, "fn", "Attacks (Avg): ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", round(TheseFilteredStats["attacks_per_success"]).."(" .. TheseFilteredStats["attacks_landed"]+TheseFilteredStats["attacks_defended"]..")", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+			iLine = iLine + 1
+			WindowText (win, "fn", "..landed: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", round(TheseFilteredStats["attacks_landed"]/TheseFilteredStats["success"]).."(" .. round(100 / TheseFilteredStats["attacks_per_success"] * (TheseFilteredStats["attacks_landed"]/TheseFilteredStats["success"])).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+
+			iLine = iLine + 1
+			WindowText (win, "fn", "..defended: ", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode
+			WindowText (win, "fn", round(TheseFilteredStats["attacks_defended"] / TheseFilteredStats["success"]) .."(" .. round(100 / TheseFilteredStats["attacks_per_success"] * (TheseFilteredStats["attacks_defended"] / TheseFilteredStats["success"])).."%)", 4 + iLongest, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+		else
+			iLine = iLine + 1
+			WindowText (win, "fn", "No results found for above filters.", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("white"), false) -- not Unicode		
+		end
+	else
+		iLine = iLine + 1
+		WindowText (win, "fn", "No backstabs recorded.", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+		iLine = iLine + 1
+		WindowText (win, "fn", "Get stabbing!", 4, (font_height+2+tab_height+2)+font_height*(iLine), 0, 0,	ColourNameToRGB("limegreen"), false) -- not Unicode
+	end
+
+end -- DrawFilter
+    
+-- -------------------------------------------------------------------------------
+-- tabs - table of all available tabs
+-- -------------------------------------------------------------------------------    
+tabs = {
+    { name = "Stats", handler = DrawStats },
+    { name = "Last", handler = DrawLast },
+    { name = "Filter",  handler = DrawFilter },
+    } -- end of tabs
+    
+active_tab = 1
+    
+-- -------------------------------------------------------------------------------
+-- OnPluginInstall
+-- -------------------------------------------------------------------------------
+function OnPluginInstall ()
+
+
+
+  win = GetPluginID ()
+  font_id = "fn"
+  
+  font_name = "Consolas"    -- the font name
+  font_size = 10
+  require "movewindow"  -- load the movewindow.lua module
+
+  -- install the window movement handler, get back the window position
+  windowinfo = movewindow.install (win, miniwin.pos_top_left)  -- default to top left
+   
+  -- make window so I can grab the font info
+  WindowCreate (win, 
+                 windowinfo.window_left, 
+                 windowinfo.window_top, 
+                 window_width, window_height,
+                 windowinfo.window_mode,   
+                 windowinfo.window_flags,
+                 background_colour) 
+
+  WindowFont (win, font_id, font_name, font_size, false, false, false, false, 0, 0)  -- normal
+
+  window_lines = 8  
+  line_spacing = 0
+  font_height = WindowFontInfo (win, font_id, 1)  -- height
+  window_padding = 2
+  text_width = WindowTextWidth (win, "fn", "Vitality: 99              ")
+  window_width = text_width + window_padding*2
+
+  client_bottom = window_height - font_height - 8
+  tab_top = font_height + 2
+  tab_height = font_height + 4 
+  window_title = "BackstabMate v"
+  window_height = tab_top + tab_height +(font_height*(window_lines+line_spacing))+(window_padding*2)
+
+--recreate to get proper size
+  WindowCreate (win, 
+                 windowinfo.window_left, 
+                 windowinfo.window_top, 
+                 window_width, window_height,
+                 windowinfo.window_mode,   
+                 windowinfo.window_flags,
+                 background_colour) 
+ 
+	active_tab = 1
+	if GetVariable("active_tab") ~= nil then
+		active_tab = tonumber(GetVariable("active_tab"))
+	end
+	DrawWindow (active_tab)  
+ 
+end -- OnPluginInstall
+
+
+-- -------------------------------------------------------------------------------
+-- OnPluginSaveState
+-- -------------------------------------------------------------------------------
+function OnPluginSaveState ()
+  -- save window current location for next time  
+  movewindow.save_state (win)
+
+  SetVariable ("BSStats", "BSStats = " .. serialize.save_simple (BSStats))
+  SetVariable ("active_tab", tostring(active_tab))
+  SetVariable ("bLogging", tostring(bLogging))
+  SetVariable ("Filters", json.encode(Filters))
+end -- function OnPluginSaveState
+
+function OnPluginDisable()
+	WindowShow (win,  false)
+end
+
+function OnPluginClose ()
+	WindowShow (win,  false)
+end
+
+-- -------------------------------------------------------------------------------
+-- mousedown - handle clicking on a tab
+-- -------------------------------------------------------------------------------
+function tab_mouse_down (flags, hotspot_id)
+	  local whichTab, TabName = string.match (hotspot_id, "^hs(%d)(.+)$")
+	  if not whichTab then  -- tab unknown for some reason
+		return
+	  end -- if
+	  
+	  if active_tab ~= tonumber(whichTab) then
+		DrawWindow (tonumber (whichTab))
+	  end
+end -- tab_mouse_down
+
+function tab_mouse_up (flags, hotspot_id)
+  if (flags == miniwin.hotspot_got_rh_mouse ) then
+	  local whichTab, TabName = string.match (hotspot_id, "^hs(%d)(.+)$")
+	  if not whichTab then  -- tab unknown for some reason
+		return
+	  end -- if
+	  
+	  if active_tab == tonumber(whichTab) then
+
+		local menu_string = 		"!>Print Stats to Window|"
+		menu_string = menu_string ..	"Full Stats|"
+		menu_string = menu_string ..	"Last Stats|"
+		menu_string = menu_string ..	">Filtered Stats|"
+		menu_string = menu_string ..		"Current Filters|"
+		menu_string = menu_string ..		"Sorted By NPC|"
+		menu_string = menu_string ..		"Sorted By Weapon|"
+		menu_string = menu_string ..	"<|"
+		menu_string = menu_string .."<|"
+		menu_string = menu_string ..">Log Stats|"
+		if bLogging == true then
+		menu_string = menu_string ..	"+"
+		end
+		menu_string = menu_string ..	"On|"
+		if bLogging == false then
+		menu_string = menu_string ..	"+"
+		end
+		menu_string = menu_string ..	"Off|"
+		menu_string = menu_string .."<|"
+		menu_string = menu_string ..">Filters|"
+		menu_string = menu_string ..	"Victim (" .. Filters["victim"] .. ")|"
+		menu_string = menu_string ..	"Weapon (" .. Filters["weapon"] .. ")|"
+		menu_string = menu_string ..	"List Known Victims|"
+		menu_string = menu_string ..	"List Known Weapons|"
+		menu_string = menu_string .."<|"
+		menu_string = menu_string .."-|"
+		menu_string = menu_string .."Reset Stats|"
+		menu_string = menu_string .."<"
+
+		result = WindowMenu (win, 
+			WindowInfo (win, 14),  -- x
+			WindowInfo (win, 15),   -- y
+			menu_string)
+
+		result = tonumber(result) or 0
+
+		if result == 0 then
+		elseif result == 1 then
+			OutputStats("full")
+		elseif result == 2 then
+			OutputStats("last")
+		elseif result == 3 then
+			OutputStats("filtered")
+		elseif result == 4 then
+			OutputStats("ByNPC")
+		elseif result == 5 then
+			OutputStats("ByWeapon")
+		elseif result == 6 then
+			ToggleLogging("on")
+		elseif result == 7 then
+			ToggleLogging("off")
+		elseif result == 8 then
+		
+			local FullNPCTable = {}
+
+			for i, v in ipairs (BSStats) do
+				local sNew = v["victim"]
+				for sFam, sGen in pairs (tReplaceStrings) do
+					sNew = string.gsub(sNew, sFam, sGen)
+				end
+				for _, ShortName in ipairs(SimpleShortenList) do
+					if string.match(v["victim"], ShortName .. "$") then
+						sNew = ShortName
+					end
+				end
+				for ii, vv in ipairs (FullNPCTable) do
+					if sNew == vv["name"] or sNew .. "s" == vv["name"] or sNew == vv["name"] .. "s" then
+						FullNPCTable[ii]["count"] = FullNPCTable[ii]["count"] + 1
+						sNew = "?"
+						break
+					end
+				end
+				
+				if sNew ~= "?" then
+					table.insert(FullNPCTable, {["name"] = sNew, ["count"] = 1})
+				end
+			end
+			
+			function SortFunction(a, b)
+				-- possibly add an exception to ignore leading bracket
+				return a["count"] > b["count"]
+			end
+			
+			table.sort(FullNPCTable, SortFunction)
+
+			local i = 1
+			local sVictimList = ""
+			while i <= 10 do
+				if FullNPCTable[i] ~= nil then
+					sVictimList = sVictimList .. FullNPCTable[i]["name"] .. " (" .. FullNPCTable[i]["count"] .. ")\n" 
+				else
+					break
+				end
+				i = i + 1
+			end
+
+			local sNewVictim = utils.inputbox("Enter victim to display stats for.\n\nSuggestions\\Top Ten:\n".. sVictimList, "Victim Choice", Filters["victim"], "", 12 )
+			if sNewVictim ~= nil then
+				Filters["victim"] = sNewVictim
+				if TabName == "Filter" then
+					CallPlugin (ThisPluginID, "DrawWindow")
+				end
+			end
+		elseif result == 9 then
+			local FullWeaponTable = {}
+
+			for i, v in ipairs (BSStats) do
+				local sNew = v["bs_weapon"]
+				for ii, vv in ipairs (FullWeaponTable) do
+					if sNew == vv["name"] or sNew .. "s" == vv["name"] or sNew == vv["name"] .. "s" then
+						FullWeaponTable[ii]["count"] = FullWeaponTable[ii]["count"] + 1
+						sNew = "?"
+						break
+					end
+				end
+				
+				if sNew ~= "?" then
+					table.insert(FullWeaponTable, {["name"] = sNew, ["count"] = 1})
+				end
+			end
+			
+
+			function SortFunction(a, b)
+				-- possibly add an exception to ignore leading bracket
+				return a["count"] > b["count"]
+			end
+			
+			table.sort(FullWeaponTable, SortFunction)
+
+			local i = 1
+			local sVictimList = ""
+			while i <= 10 do
+				if FullWeaponTable[i] ~= nil then
+					sVictimList = sVictimList .. FullWeaponTable[i]["name"] .. " (" .. FullWeaponTable[i]["count"] .. ")\n" 
+				else
+					break
+				end
+				i = i + 1
+			end
+
+			local sNewVictim = utils.inputbox("Enter weapon to display stats for.\n\nSuggestions\\Top Ten:\n".. sVictimList, "Weapon Choice", Filters["weapon"], "", 12 )
+			if sNewVictim ~= nil then
+				Filters["weapon"] = sNewVictim
+				if TabName == "Filter" then
+					CallPlugin (ThisPluginID, "DrawWindow")
+				end
+			end
+		elseif result == 10 then
+			local FullNPCTable = {}
+
+			for i, v in ipairs (BSStats) do
+				local sNew = v["victim"]
+				for _, ShortName in ipairs(SimpleShortenList) do
+					if string.match(v["victim"], ShortName .. "$") then
+						sNew = ShortName
+					end
+				end
+				for ii, vv in ipairs (FullNPCTable) do
+					if sNew == vv["name"] or sNew .. "s" == vv["name"] or sNew == vv["name"] .. "s" then
+						FullNPCTable[ii]["count"] = FullNPCTable[ii]["count"] + 1
+						sNew = "?"
+						break
+					end
+				end
+				
+				if sNew ~= "?" then
+					table.insert(FullNPCTable, {["name"] = sNew, ["count"] = 1})
+				end
+			end
+			
+
+			function SortFunction(a, b)
+				-- possibly add an exception to ignore leading bracket
+				return a["name"] < b["name"]
+			end
+			
+			table.sort(FullNPCTable, SortFunction)
+			
+			Note("")
+			ColourNote(cText2, "", "Known victims:")
+			for i, v in ipairs (FullNPCTable) do
+				ColourTell(cText, "", v["name"] .. " (", cText2, "", v["count"], cText, "", ")")
+				if i ~= #FullNPCTable then 
+					ColourTell(cText, "", ", ")
+				else
+					ColourNote(cText, "", ".")
+				end
+			end
+			ColourNote(cText2, "", "The match compares to the end, so you can generalise using 'guard' for multiple types of guards.  Also you can use [Agatean family] captain\\thug\\bodyguard or [Shaker] lion.  Use 'all' to display results for all weapons.  You can likely use regexp matches as well.  Any suggestions of NPCs that should be merged, let me know.")
+
+			Note("")
+		elseif result == 11 then
+			local FullWeaponTable = {}
+
+			for i, v in ipairs (BSStats) do
+				local sNew = v["bs_weapon"]
+				for _, ShortName in ipairs(SimpleShortenList) do
+					if string.match(v["bs_weapon"], ShortName .. "$") then
+						sNew = ShortName
+					end
+				end
+				for ii, vv in ipairs (FullWeaponTable) do
+					if sNew == vv["name"] or sNew .. "s" == vv["name"] or sNew == vv["name"] .. "s" then
+						FullWeaponTable[ii]["count"] = FullWeaponTable[ii]["count"] + 1
+						sNew = "?"
+						break
+					end
+				end
+				
+				if sNew ~= "?" then
+					table.insert(FullWeaponTable, {["name"] = sNew, ["count"] = 1})
+				end
+			end
+			
+
+			function SortFunction(a, b)
+				-- possibly add an exception to ignore leading bracket
+				return a["name"] < b["name"]
+			end
+			
+			table.sort(FullWeaponTable, SortFunction)
+			
+			Note("")
+			ColourNote(cText2, "", "Known weapons:")
+			for i, v in ipairs (FullWeaponTable) do
+				ColourTell(cText, "", v["name"] .. " (", cText2, "", v["count"], cText, "", ")")
+				if i ~= #FullWeaponTable then 
+					ColourTell(cText, "", ", ")
+				else
+					ColourNote(cText, "", ".")
+				end
+			end
+			ColourNote(cText2, "", "The match compares to the end, so you can generalise using 'dagger' for multiple types of daggers.  Standard pluralization is accounted for so even if it shows up as plural in the above list you can filter for it in singular form.  Use 'all' to display results for all weapons.")
+
+			Note("")
+		elseif result == 12 then
+				local sPopupResult = utils.inputbox("This will reset all stats, names and weapons, type 'yes' to confirm.", "Reset Confirmation", "", "", 12 )
+			if (sPopupResult ~= nil and string.lower(sPopupResult) == "yes") then
+				BSStats = {}
+				BSMNote("Backstab stats reset.")
+				CallPlugin (ThisPluginID, "DrawWindow")
+			end
+		end
+	  end
+	end
+end -- tab_mouse_up
+-- -------------------------------------------------------------------------------
+-- DrawWindow - draw the tabbed window
+-- -------------------------------------------------------------------------------
+function DrawWindow (whichTab)
+
+  if whichTab == nil then
+	whichTab = active_tab
+  end
+  active_tab = whichTab
+  
+  -- clear window
+  WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, 0, background_colour)
+  WindowDeleteAllHotspots (win)
+
+    -- draw drag bar rectangle
+  WindowRectOp (win, miniwin.rect_fill, 1, 1, 0, font_height + 2, title_bar_colour)
+
+  -- add the drag handler so they can move the window around
+  movewindow.add_drag_handler (win, 0, 0, 0, font_height + 2)
+  -- add hotspot for menu options
+
+  local thisTab = tabs [whichTab]
+  
+  -- find title width so we can center it
+  title_width = WindowTextWidth (win, font_id, "BackstabMate v1")
+  
+  -- draw title
+  WindowText(win, font_id, "BackstabMate v1", (window_width - title_width )/ 2 + 1, 1, 0, 0, title_colour)
+
+  -- frame window
+  WindowRectOp (win, miniwin.rect_frame, 0, 0, 0, 0, frame_colour)
+  
+  -- draw tabs
+  
+  local left = 1
+  
+  for k, v in ipairs (tabs) do
+	local tab_width = (window_width - (tab_filler*(#tabs))-3 )/ #tabs
+
+    -- tab background
+    WindowRectOp (win, miniwin.rect_fill, left, tab_top, left + tab_width + tab_filler, tab_top + tab_height, tab_colour)
+
+    -- tab text
+    WindowText(win, font_id, v.name, left + tab_filler / 2, tab_top + 4, 0, 0, tab_text_colour)
+    
+    -- draw upper line
+      WindowLine(win, left, tab_top + 2, left + tab_width + tab_filler, tab_top + 2, 
+                  ColourNameToRGB "lightgray", miniwin.pen_solid, 2)
+    
+    -- draw lower line if not active tab
+    if k ~= whichTab then
+		WindowLine(win, left, tab_top + tab_height, left + tab_width + tab_filler, tab_top + tab_height, 
+                ColourNameToRGB "lightgray", miniwin.pen_solid, 1)
+    end -- if not active
+    
+    -- draw vertical lines
+    WindowLine(win, left, tab_top + 2, left, tab_top + tab_height, 
+                ColourNameToRGB "lightgray", miniwin.pen_solid, 1)
+    WindowLine(win, left + tab_width + tab_filler, tab_top + 2, left + tab_width + tab_filler, tab_top + tab_height, 
+                ColourNameToRGB "lightgray", miniwin.pen_solid, 1)
+
+    -- now add a hotspot for this tab
+    if k ~= whichTab then
+		WindowAddHotspot(win, "hs" .. k .. v.name,  
+                     left, tab_top, left + tab_width + tab_filler, tab_top + tab_height,   -- rectangle
+                     "",   -- mouseover
+                     "",   -- cancelmouseover
+                     "tab_mouse_down",
+                     "",  -- cancelmousedown
+                     "tab_mouse_up",   -- mouseup
+                     "Select " .. v.name .. " tab",  -- tooltip text
+                     miniwin.cursor_hand, 0)  -- hand cursor
+    left = left + tab_width + tab_filler
+	else
+		WindowAddHotspot(win, "hs" .. k .. v.name,  
+                     left, tab_top, left + tab_width + tab_filler, tab_top + tab_height,   -- rectangle
+                     "",   -- mouseover
+                     "",   -- cancelmouseover
+                     "tab_mouse_down",
+                     "",  -- cancelmousedown
+                     "tab_mouse_up",   -- mouseup
+                     "Right-click for options",  -- tooltip text
+                     miniwin.cursor_hand, 0)  -- hand cursor
+    left = left + tab_width + tab_filler
+	end
+	
+  end -- for each tab
+  
+  -- call handler to draw rest of window
+  local handler = thisTab.handler
+  if handler then
+    handler (1, font_height + 2, window_width - 1, tab_top)
+  else
+    ColourNote ("orange", "", "No tab handler for " .. thisTab.name)
+  end -- if
+  
+  WindowShow (win, true) 
+end -- DrawWindow
+]]>
+</script> 
+<!--  Aliases  -->
+<aliases>
+</aliases>
+
+<!--  Triggers  -->
+<triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?You (?>carefully |silently |skilfully )?sneak around (?P<multiple>one of )?(?:the )?(?P<victim>.+) without being spotted and manage to catch (?>him|her|it) by surprise\.$"
+   omit_from_output="n"
+   script="AddBackstabSuccess"
+   name="BackstabSuccess"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?You hold your cover as you (?>carefully | silently |skilfully )?sneak around (?P<multiple>one of )?(?:the )?(?P<victim>.+) and manage to catch (?>him|her|it) by surprise\.$"
+   omit_from_output="n"
+   script="AddBackstabSuccess"
+   name="BackstabSuccessCovert"
+   group="BSLogging"
+  ></trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^You sneak around (?P<multiple>one of )?(?:the )?(?P<victim>.+) and prepare to backstab \w+\.  At the last moment \w+ seems to sense your presence and turns around furiously\.$"
+   omit_from_output="n"
+   script="AddBackstabFail"
+   name="BackstabFailI"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^As you sneak around (?P<multiple>one of )?(?:the )?(?P<victim>.+) to prepare the backstab, you make a slight noise\.  Unfortunately, \w+ notices and turns around with malevolent intent\.$"
+   omit_from_output="n"
+   script="AddBackstabFail"
+   name="BackstabFailII"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^As you try to sneak around (?P<multiple>one of )?(?:the )?(?P<victim>.+) to prepare the backstab, you clumsily trip over your own feet\.  \w+ looks furious\!$"
+   omit_from_output="n"
+   script="AddBackstabFail"	
+   name="BackstabFailIII"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?The (?P<victim>.+) looks (?P<quite>quite )?confused\."
+   omit_from_output="n"
+   script="IsConfused"	
+   name="Confused"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?(?:With surprising speed|Moving (?:swiftly|quickly)|Catching (?>him|her|it) (?:by surprise|off balance)|Striking like a cobra|In the blink of an eye|Moving too fast to see|Quick as lightning), you .+ (?P<multiple>one of )?(?:the )?(?P<victim>.+) \w+ with (?P<multiple_wep>one of )?your (?P<weapon>.+)\.$"
+   omit_from_output="n"
+   script="AddBackstabAttackSuccess"	
+   name="BackstabAttackSuccess"
+   group="BSLogging"
+  ></trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?(?:With surprising speed|Moving (?:swiftly|quickly)|Catching (?>him|her|it) (?:by surprise|off balance)|Striking like a cobra|In the blink of an eye|Moving too fast to see|Quick as lightning), you .+ (?P<multiple_wep>one of )?your (?P<weapon>.+) right through (?P<multiple>one of )?(?:the )?(?P<victim>.+)\'s \w+\.$"
+   omit_from_output="n"
+   script="AddBackstabAttackSuccess"	
+   name="BackstabAttackSuccessII"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?You thrust at (?P<multiple>one of )?(?:the )?(?P<victim>.+) with (?P<multiple_wep>one of your )?(?P<weapon>.+) but despite the surprise (?>he|she|it) (?:just |barely |deftly )?(?:(?:blocks|parries) the blow with.+|dodges out of the way)\.$"
+    omit_from_output="n"
+   script="AddBackstabAttackFail"	
+   name="BackstabAttackFail"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?You (?:temporarily )?stop trying to be inconspicuous\.|You come out of your hiding place\.$"
+   omit_from_output="n"
+   script="IsCovertBackstabFail"	
+   name="IsCovert"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?(?:You kill.+\.|Hp\: \d+ \(\d+\).+)$"
+   omit_from_output="n"
+   script="EndBackstab"	
+   name="EndOfBackstab"
+   group="BSLogging"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?.+"
+   omit_from_output="n"
+   script="AfterMonitorKill"	
+   name="AfterMonitorKill"
+   group="BSLogging"
+  ></trigger>
+</triggers>
+  
+</muclient>

@@ -1,0 +1,832 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="CoatStats"
+   author="Reva"
+   id="ee457bea34534befeeddea25"
+   language="Lua"
+   purpose="Compare combat rounds and hits to coating effects"
+   date_written="2025-10-22"
+   date_modified="2025-10-22"
+   save_state="y"
+   requires="4.84"
+   version="1.0"
+   >
+</plugin>
+<script>
+<![CDATA[
+
+cText = "black"
+sTextColour = "deepskyblue"
+
+bShowVisceraCount = true
+
+iCombatRounds = 0
+iCurCombatRounds = 0
+iSuccesfulBaseHits = 0
+iCurSuccesfulBaseHits = 0
+iCorpseExplosions = 0
+iCurCorpseExplosions = 0
+iBloatedNPCs = 0
+iCurBloatedNPCs = 0
+iExplosionHits = 0
+iCurExplosionHits = 0
+iTotalNPCsHit = 0
+iCurTotalNPCsHit = 0
+
+if (GetVariable("iCombatRounds") ~= nil) then
+	iCombatRounds = tonumber((GetVariable("iCombatRounds")))
+end
+
+if (GetVariable("iSuccesfulBaseHits") ~= nil) then
+	iSuccesfulBaseHits = tonumber((GetVariable("iSuccesfulBaseHits")))
+end
+
+if (GetVariable("iCorpseExplosions") ~= nil) then
+	iCorpseExplosions = tonumber((GetVariable("iCorpseExplosions")))
+end
+
+if (GetVariable("iBloatedNPCs") ~= nil) then
+	iBloatedNPCs = tonumber((GetVariable("iBloatedNPCs")))
+end
+
+if (GetVariable("iExplosionHits") ~= nil) then
+	iExplosionHits = tonumber((GetVariable("iExplosionHits")))
+end
+
+if (GetVariable("iTotalNPCsHit") ~= nil) then
+	iTotalNPCsHit = tonumber((GetVariable("iTotalNPCsHit")))
+end
+
+
+function OnPluginSaveState ()
+	SetVariable("iCombatRounds", tostring(iCombatRounds))
+	SetVariable("iSuccesfulBaseHits", tostring(iSuccesfulBaseHits))
+	SetVariable("iCorpseExplosions", tostring(iCorpseExplosions))
+	SetVariable("iBloatedNPCs", tostring(iBloatedNPCs))
+	SetVariable("iExplosionHits", tostring(iExplosionHits))
+	SetVariable("iTotalNPCsHit", tostring(iTotalNPCsHit))
+end
+
+function AddCombatRound (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iCombatRounds = iCombatRounds + 1 
+	iCurCombatRounds = iCurCombatRounds + 1 
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iCombatRounds)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+function AddSuccesfulBaseHit (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iSuccesfulBaseHits = iSuccesfulBaseHits + 1 
+	iCurSuccesfulBaseHits = iCurSuccesfulBaseHits + 1
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iSuccesfulBaseHits)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+
+function AddCorpseExplosion (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iCorpseExplosions = iCorpseExplosions + 1 
+	iCurCorpseExplosions = iCurCorpseExplosions + 1
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iCorpseExplosions)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+function AddBloatedNPC (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iBloatedNPCs = iBloatedNPCs + 1 
+	iCurBloatedNPCs = iCurBloatedNPCs + 1
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iBloatedNPCs)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+function AddExplosionHits (sName, sLine, wildcards, styles)
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+
+	iExplosionHits = iExplosionHits + 1 
+	iCurExplosionHits = iCurExplosionHits + 1
+	local iNPCsHit = CountNPCs(wildcards.victims)
+	iTotalNPCsHit = iTotalNPCsHit + iNPCsHit
+	iCurTotalNPCsHit = iCurTotalNPCsHit + iNPCsHit
+
+	if bShowVisceraCount == true then
+		ColourTell(cText, "", " [")
+		--ColourTell(sTextColour, "", iExplosionHits .. "-" .. iNPCsHit)
+		ColourTell(sTextColour, "", iNPCsHit)
+		ColourTell(cText, "", "]")
+	end
+	Note("")	
+
+end
+
+function CountNPCs (sText)
+    local total_count = 0
+
+    -- Define words to numbers
+    local number_words = {
+        one = 1, two = 2, three = 3, four = 4, five = 5,
+        six = 6, seven = 7, eight = 8, nine = 9, ten = 10
+    }
+
+    -- Split input into lines
+    for line in sText:gmatch("[^\r\n]+") do
+        local count = 0
+
+        -- Replace " and " with ", " to unify separators
+        line = line:gsub(" and ", ", ")
+
+        -- Split the line into parts by comma
+        for part in line:gmatch("[^,]+") do
+            part = part:match("^%s*(.-)%s*$") -- trim spaces
+            --part = part:gsub("%b()", ""):gsub("%s+$", "") -- remove anything in parentheses
+
+            local lowered = part:lower()
+
+            -- Try matching number word
+            local matched = false
+            for word, num in pairs(number_words) do
+                if lowered:match("^" .. word .. " ") then
+                    count = count + num
+                    matched = true
+                    break
+                end
+            end
+
+            if not matched then
+                -- Match "a " or "an " ? count as 1
+                if lowered:match("^a[n]? ") then
+                    count = count + 1
+                else
+                    -- Else assume it's a proper name (e.g. "Louis Accardo") ? count as 1
+                    count = count + 1
+                end
+            end
+        end
+
+        total_count = total_count + count
+    end
+
+    return total_count
+end
+
+
+function CoatStart(sName, sLines, wildcards, styles)
+	--Not restart on a second coat if already going?
+	--[[
+	if IsTiming == true then
+		return
+	end
+	]]--
+	
+    StartTime = os.time()  -- Store the current time as start time
+    
+	EndTime = nil  -- Reset the end time if a new timer is started
+		
+	--Do it all in one, round to 2 digits 2 decimal places
+	IsTiming = true
+
+	--reset current stats
+	iCurCombatRounds = 0
+	iCurSuccesfulBaseHits = 0
+	iCurCorpseExplosions = 0
+	iCurBloatedNPCs = 0
+	iCurExplosionHits = 0
+	iCurTotalNPCsHit = 0
+
+	if sName ~= "ManualCoatStart" then
+		for _, v in ipairs (styles) do
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+
+		ColourTell(cText, "", " [")
+		ColourTell(sTextColour, "", "Coat start time: " .. os.date ("%H:%M:%S"))
+		ColourNote(cText, "", "]")
+	else
+		ColourTell(cText, "", "[")
+		ColourTell(sTextColour, "", "Coat start time: " .. os.date ("%H:%M:%S"))
+		ColourNote(cText, "", "]")
+	end
+
+	EnableTrigger("CoatEnd", true)
+	EnableTrigger("CombatMonitor", true)
+	EnableTrigger("SuccesfulBaseHit", true)
+ 	EnableTrigger("CorpseExplosionMessage", true)
+	EnableTrigger("BloatedNPCMessage", true)
+	EnableTrigger("CorpseExplosionHitMessage", true)
+end
+
+bDisplayStats = true
+function CoatEnd(sName, sLines, wildcards, styles)
+	if IsTiming == false then 
+		EnableTrigger("CoatEnd", false)
+		EnableTrigger("CombatMonitor", false)
+		EnableTrigger("SuccesfulBaseHit", false)
+ 		EnableTrigger("CorpseExplosionMessage", false)
+		EnableTrigger("BloatedNPCMessage", false)
+		EnableTrigger("CorpseExplosionHitMessage", false)
+
+		if sName ~= "ManualCoatEnd" then
+			for _, v in ipairs (styles) do
+				ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+			end -- for
+			Note("")
+		end
+		return 
+	end
+
+	EndTime = os.time()
+
+	if sName ~= "ManualCoatEnd" then
+		for _, v in ipairs (styles) do
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+	end
+
+	if StartTime ~= nil then
+		local DisplayCoatDuration = FormatTime(os.difftime (os.time (), StartTime))
+		if sName ~= "ManualCoatEnd" then
+			Tell(" ")
+		end
+		if DisplayCoatDuration == nil or DisplayCoatDuration == 0 then
+			ColourNote(sTextColour, "", "Failed to capture elapsed time, cancelling.")
+			IsTiming = false
+			EnableTrigger("CoatEnd", false)
+			EnableTrigger("CombatMonitor", false)
+			EnableTrigger("SuccesfulBaseHit", false)
+			EnableTrigger("CorpseExplosionMessage", false)
+			EnableTrigger("BloatedNPCMessage", false)
+			EnableTrigger("CorpseExplosionHitMessage", false)
+			Note("")
+			return
+		end
+
+		ColourTell(cText, "", "[")
+		ColourTell(sTextColour, "", "Coat end, elapsed time: " .. DisplayCoatDuration .. "s")
+		ColourNote(cText, "", "]")
+	end
+
+	if bDisplayStats == true then
+		local ratio = ""
+		if iCurTotalNPCsHit > 0 and iCurCombatRounds > 0 then
+			local ratio = simplifiedRatio(iCurTotalNPCsHit, iCurTotalNPCsHit)
+		end
+		ColourTell(sTextColour, "", "Stats: " .. AddCommas(iCurTotalNPCsHit) .. " viscera hits in " .. AddCommas(iCurCombatRounds) .. " combat rounds (" .. AddCommas(iCurSuccesfulBaseHits) .. " poisoning attacks).")
+		if ratio ~= "" then
+			ColourNote(sTextColour, "", " (Ratio " .. ratio .. ")")
+		else
+			Note("")
+		end
+	end
+	
+	IsTiming = false
+	EnableTrigger("CoatEnd", false)
+	EnableTrigger("CombatMonitor", false)
+	EnableTrigger("SuccesfulBaseHit", false)
+	EnableTrigger("CorpseExplosionMessage", false)
+	EnableTrigger("BloatedNPCMessage", false)
+	EnableTrigger("CorpseExplosionHitMessage", false)
+end
+
+-- Function to display the elapsed time in 00:00s format
+function FormatTime(iTime)
+    local minutes = math.floor(iTime / 60)  -- Calculate minutes
+    local seconds = iTime % 60             -- Calculate remaining seconds
+	
+	if minutes >= 1 then
+		return(string.format("%02d:%02d", minutes, seconds))
+	else
+		return(string.format("%02d", seconds))
+	end
+    -- Format the output as "mm:sss" with leading zeros
+end
+
+function DisplayInfo(sName, sLine, wildcards, styles)
+
+	Note("")
+	ColourNote(sTextColour, "", "CoatStats by Reva:")
+	ColourNote(sTextColour, "", "~-~-~-~-~-~-~-~-~")
+
+
+	local bSeperator = false
+	if IsTiming == true then
+		if StartTime ~= nil then
+			bSeperator = true
+			local DisplayCoatDuration = FormatTime(os.difftime (os.time (), StartTime))
+			ColourNote(sTextColour, "", "Current coat duration: " .. DisplayCoatDuration .. "s")
+		end
+		--local ratio = ""
+		if iCurCombatRounds > 0 and iCurTotalNPCsHit > 0 and iCurSuccesfulBaseHits > 0 then
+			bSeperator = true
+			local ratio = simplifiedRatio(iCurTotalNPCsHit, iCurCombatRounds)
+			ColourNote(sTextColour, "", "Current stats: " .. AddCommas(iCurTotalNPCsHit) .. " viscera hits in " .. AddCommas(iCurCombatRounds) .. " combat rounds (" .. AddCommas(iCurSuccesfulBaseHits).. " poisoning attacks). (Ratio " .. ratio .. ")")
+		end
+	else
+		if StartTime ~= nil and EndTime ~= nil then
+			bSeperator = true
+			local DisplayCoatDuration = FormatTime(os.difftime (EndTime, StartTime))
+			ColourNote(sTextColour, "", "Last coat duration: " .. DisplayCoatDuration .. "s")
+		end
+		if iCurCombatRounds > 0 and iCurTotalNPCsHit > 0 and iCurSuccesfulBaseHits > 0 then
+			bSeperator = true
+			local ratio = simplifiedRatio(iCurTotalNPCsHit, iCurCombatRounds)
+			ColourNote(sTextColour, "", "Last stats: " .. AddCommas(iCurTotalNPCsHit) .. " viscera hits in " .. AddCommas(iCurCombatRounds) .. " combat rounds (" .. AddCommas(iCurSuccesfulBaseHits) .. " poisoning attacks). (Ratio " .. ratio .. ")")
+		end
+	end
+
+	if bSeperator == true then
+		ColourNote(sTextColour, "", "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+	end
+	
+	ColourNote(sTextColour, "", "Combat rounds (based on monitor): " .. AddCommas(iCombatRounds))
+	ColourNote(sTextColour, "", "Poisoning attacks: " .. AddCommas(iSuccesfulBaseHits))
+	ColourNote(sTextColour, "", "Corpse explosions: " .. AddCommas(iCorpseExplosions))
+	--this may be important as instant burying will prevent the explosion in room, but it was still possible.
+	ColourNote(sTextColour, "", "Bloated NPCs: " .. AddCommas(iBloatedNPCs))
+	--useless, so removed at least in stats for now
+	--ColouNote(sTextColour, "", "Total lines of explosion hits: " .. iExplosionHits)
+	ColourNote(sTextColour, "", "NPCs hit\\damaged by viscera: " .. AddCommas(iTotalNPCsHit))
+
+	local ratio = simplifiedRatio(iTotalNPCsHit, iCombatRounds)
+	ColourNote(sTextColour, "", "Ratio (viscera hits:combat rounds): " .. ratio)
+	Note("")
+
+end
+
+function round(num, idp)
+  local mult = 10^(idp or 1)
+  return math.floor(num * mult + 0.5) / mult
+end
+
+
+function AddCommas(n) -- credit http://richard.warburton.it
+	local left,num,right = string.match(n,'^([^%d]*%d)(%d*)(.-)$')
+	return left..(num:reverse():gsub('(%d%d%d)','%1,'):reverse())..right
+end
+
+
+-- Function to compute the greatest common divisor (GCD)
+function gcd(a, b)
+    while b ~= 0 do
+        a, b = b, a % b
+    end
+    return a
+end
+
+-- Function to calculate simplified ratio a:b
+function simplifiedRatio(a, b)
+    if b == 0 then
+        return "Error, division by zero is not allowed"
+    end
+
+    local divisor = gcd(a, b)
+    local simplifiedA = a / divisor
+    local simplifiedB = b / divisor
+
+    return simplifiedA .. ":" .. simplifiedB
+end
+
+
+function OnPluginInstall()
+	DoAfterSpecial (1.5, 'DisplayHelp()', sendto.script)
+end
+
+function ResetStats(sName, sLine, wildcards, styles)
+	iCombatRounds = 0
+	iSuccesfulBaseHits = 0
+	iCorpseExplosions = 0
+	iBloatedNPCs = 0
+	iExplosionHits = 0
+	iTotalNPCsHit = 0
+	ColourNote(sTextColour, "", "Coat stats reset.")
+end
+
+
+function DisplayHelp()
+ColourNote(sTextColour, "",[[
+CoatStats v1.0 by Reva
+ >< >< >< >< >< >< ><
+
+Commands:
+ 'coat[stats] help'                  - Display this help screen.
+ 'coat[stats] display\stats'         - Display recorded info.
+ 'coat[stats] reset'                 - Reset all recored info.
+
+* The plugin starts counting when a fresh coat is applied and continues until the coat wears off.  
+* If you coat multiple weapons it will stop when the first coating wears off.
+* Base rounds counted are only those that have the line about poison being visible around the wound.
+* The plugin counts corpses exploded regardless of who is responsible for it.
+
+ 'coat[stats] start'                  - Manually start recording.
+ 'coat[stats] end\stop'   		      - Manually stop recording.
+
+Questions, comments, or suggestions, please contact me online or through mudmail!
+]])
+
+ 
+ 
+end
+
+	iNobCurCombatRounds = 0
+	iNobCurSuccesfulBaseHits = 0
+	iNobCurCorpseExplosions = 0
+	iNobCurBloatedNPCs = 0
+	iNobCurExplosionHits = 0
+	iNobCurTotalNPCsHit = 0
+
+bNobIsCoat = false
+function NobStart (sName, sLine, wildcards, styles)
+    NobStartTime = os.time()  -- Store the current time as start time
+    
+	NobEndTime = nil  -- Reset the end time if a new timer is started
+		
+
+	bNobIsCoat = false  --assume no coat unless detected.
+	
+	--Do it all in one, round to 2 digits 2 decimal places
+	NobIsTiming = true
+
+	--reset current stats
+	iNobCurCombatRounds = 0
+	iNobCurSuccesfulBaseHits = 0
+	iNobCurCorpseExplosions = 0
+	iNobCurBloatedNPCs = 0
+	iNobCurExplosionHits = 0
+	iNobCurTotalNPCsHit = 0
+
+	if sName ~= "NobManualStart" then
+		for _, v in ipairs (styles) do
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+		Tell(" ")
+	end
+
+	ColourTell(cText, "", "[")
+	ColourTell(sTextColour, "", "Nob start time: " .. os.date ("%H:%M:%S"))
+	ColourNote(cText, "", "]")
+
+	EnableTrigger("NobtEnd", true)
+	EnableTrigger("NobCombatMonitor", true)
+	EnableTrigger("NobSuccesfulBaseHit", true)
+ 	EnableTrigger("NobCorpseExplosionMessage", true)
+	EnableTrigger("NobBloatedNPCMessage", true)
+	EnableTrigger("NobCorpseExplosionHitMessage", true)
+
+end
+
+--nob hits
+--nob explosions
+function AddNobCombatRound (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iNobCurCombatRounds = iNobCurCombatRounds + 1 
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iCombatRounds)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+function AddNobSuccesfulBaseHit (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iNobCurSuccesfulBaseHits = iNobCurSuccesfulBaseHits + 1
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iSuccesfulBaseHits)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+
+function AddNobCorpseExplosion (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iNobCurCorpseExplosions = iNobCurCorpseExplosions + 1
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iCorpseExplosions)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+function AddNobBloatedNPC (sName, sLine, wildcards, styles)
+--[[
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+]]--
+	iNobCurBloatedNPCs = iNobCurBloatedNPCs + 1
+--[[
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", iBloatedNPCs)
+	ColourTell(cText, "", "]")
+	Note("")	
+]]--
+end
+
+function AddNobExplosionHits (sName, sLine, wildcards, styles)
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+
+	iNobExplosionHits = iNobExplosionHits + 1 
+	iNobCurExplosionHits = iNobCurExplosionHits + 1
+	local iNPCsHit = CountNPCs(wildcards.victims)
+	iNobCurTotalNPCsHit = iNobCurTotalNPCsHit + iNPCsHit
+
+	if bShowVisceraCount == true then
+		ColourTell(cText, "", " [")
+		--ColourTell(sTextColour, "", iExplosionHits .. "-" .. iNPCsHit)
+		ColourTell(sTextColour, "", iNPCsHit)
+		ColourTell(cText, "", "]")
+	end
+	Note("")	
+
+end
+
+bNobDisplayStats = true
+function NobEnd (sName, sLine, wildcards, styles)
+	if NobIsTiming == false then 
+		EnableTrigger("NobEnd", false)
+		EnableTrigger("NobCombatMonitor", false)
+		EnableTrigger("NobSuccesfulBaseHit", false)
+ 		EnableTrigger("NobCorpseExplosionMessage", false)
+		EnableTrigger("NobBloatedNPCMessage", false)
+		EnableTrigger("NobCorpseExplosionHitMessage", false)
+
+		if sName ~= "ManualNobEnd" then
+			for _, v in ipairs (styles) do
+				ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+			end -- for
+			Note("")
+		end
+		return 
+	end
+
+	NobEndTime = os.time()
+
+	if sName ~= "ManualNobEnd" then
+		for _, v in ipairs (styles) do
+			ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+		end -- for
+	end
+
+	if NobStartTime ~= nil then
+		local DisplayNobDuration = FormatTime(os.difftime (os.time (), NobStartTime))
+		if sName ~= "ManualNobEnd" then
+			Tell(" ")
+		end
+		if DisplayNobDuration == nil or DisplayNobDuration == 0 then
+			ColourNote(sTextColour, "", "Failed to capture nob elapsed time, cancelling.")
+			NobIsTiming = false
+			EnableTrigger("NobEnd", false)
+			EnableTrigger("NobCombatMonitor", false)
+			EnableTrigger("NobSuccesfulBaseHit", false)
+			EnableTrigger("NobCorpseExplosionMessage", false)
+			EnableTrigger("NobBloatedNPCMessage", false)
+			EnableTrigger("NobCorpseExplosionHitMessage", false)
+			Note("")
+			return
+		end
+
+		local sIsCoat = "(uncoated)"
+		if bNobIsCoat == true then
+			local sIsCoat = "(coated)"
+		end
+		ColourTell(cText, "", "[")
+		ColourTell(sTextColour, "", "Nob " .. sIsCoat .. " end, elapsed time: " .. DisplayNobDuration .. "s")
+		ColourNote(cText, "", "]")
+	end
+
+	if bNobDisplayStats == true then
+		local ratio = ""
+		if iNobCurTotalNPCsHit > 0 and iNobCurCombatRounds > 0 then
+			local ratio = simplifiedRatio(iNobCurTotalNPCsHit, iNobCurTotalNPCsHit)
+		end
+		ColourTell(sTextColour, "", "Nob " .. sIsCoat .. " Stats: " .. AddCommas(iNobCurTotalNPCsHit) .. " viscera hits in " .. AddCommas(iNobCurCombatRounds) .. " combat rounds (" .. AddCommas(iNobCurSuccesfulBaseHits) .. " poisoning attacks).")
+		if ratio ~= "" then
+			ColourNote(sTextColour, "", " (Ratio " .. ratio .. ")")
+		else
+			Note("")
+		end
+	end
+	
+	NobIsTiming = false
+	EnableTrigger("NobEnd", false)
+	EnableTrigger("NobCombatMonitor", false)
+	EnableTrigger("NobSuccesfulBaseHit", false)
+	EnableTrigger("NobCorpseExplosionMessage", false)
+	EnableTrigger("NobBloatedNPCMessage", false)
+	EnableTrigger("NobCorpseExplosionHitMessage", false)
+end
+
+function NobIsCoat ()
+	bNobIsCoat = true
+	--Note("Nob using coating detected.")
+end
+
+function NobReset ()
+end
+
+function NobManualStart ()
+end
+
+function NobManuelEnd ()
+end
+
+function NobRecord ()
+end
+
+
+--[[
+Numerous parts of the corpse of a Triad heavy rupture and violently burst, sending all manner of innards in every direction!
+Huge chunks of flying viscera slam into five Triad thugs. [6]
+Some hefty chunks of flying matter collide with four Triad thugs. [5]
+Smaller, but painfully solid pieces of debris batter four Triad thugs. [5]
+Some tiny fragments from the explosion pepper three Triad thugs and a Triad heavy.
+Yet more tiny bits of debris smack into a Triad heavy and four Triad thugs.
+
+]]--
+]]>
+</script> 
+<!--  Aliases  -->
+<aliases>
+  <alias
+   match="^coat(?:stats)? help$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="DisplayHelp"
+   name="DisplayHelp"
+  > 
+  </alias>
+  <alias
+   match="^coat(?:stats)? (?:display|stats)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="DisplayInfo"
+   name="DisplayInfo"
+  > 
+  </alias>
+  <alias
+   match="^coat(?:stats)? (?:start)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="CoatStart"
+   name="ManualCoatStart"
+  > 
+  </alias>
+  <alias
+   match="^coat(?:stats)? (?:stop|end)$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="CoatEnd"
+   name="ManualCoatEnd"
+  > 
+  </alias>
+  <alias
+   match="^coat(?:stats)? reset$"
+   enabled="y"
+   ignore_case="y"
+   regexp="y"
+   sequence="30"
+   script="ResetStats"
+   name="ResetStats"
+  > 
+  </alias>
+</aliases>
+<!--  Triggers  -->
+
+<triggers> 
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?Hp: \d+ \(\d+\) Gp\: \d+ \(\d+\) Xp\: \d+$"
+   sequence="12"
+   omit_from_output="n"
+   script="AddCombatRound"
+   name="CombatMonitor"
+  ></trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?.+\.  Traces of.+oily.+jelly are visible around the wound\.$"
+   sequence="12"
+   omit_from_output="n"
+   script="AddSuccesfulBaseHit"
+   name="SuccesfulBaseHit"
+  ></trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?Numerous parts of .+ rupture and violently burst, sending all manner of innards in every direction\!$"
+   sequence="12"
+   omit_from_output="n"
+   script="AddCorpseExplosion"
+   name="CorpseExplosionMessage"
+  ></trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?.+ looks incredibly bloated, as if (?:he|she|it) could burst at any moment.$"
+   sequence="12"
+   omit_from_output="n"
+   script="AddBloatedNPC"
+   name="BloatedNPCMessage"
+  ></trigger>
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?(?:Huge chunks of flying viscera slam into|Some hefty chunks of flying matter collide with|Smaller, but painfully solid pieces of debris batter|Some tiny fragments from the explosion pepper|Yet more tiny bits of debris smack into) (?P<victims>.+)\.$"
+   sequence="12"
+   omit_from_output="y"
+   script="AddExplosionHits"
+   name="CorpseExplosionHitMessage"
+  ></trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?(?:YDEWFFDSou .+ apply a coating from .+ to.+\.|.+ glistens with a .+ layer of.+oily.+jelly\.)$"
+   sequence="12"
+   omit_from_output="y"
+   script="CoatStart"
+   name="CoatStart"
+  ></trigger>
+
+  <trigger
+   enabled="n"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?There is no longer enough.+oily.+jelly on .+ to be of any use\.$"
+   sequence="12"
+   omit_from_output="n"
+   script="CoatEnd"
+   name="CoatEnd"
+  ></trigger>
+
+</triggers>
+
+</muclient>

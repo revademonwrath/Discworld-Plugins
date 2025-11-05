@@ -18,7 +18,7 @@
 <script>
 <![CDATA[
 
-cText = "black"
+cText = "white"
 sTextColour = "deepskyblue"
 
 bShowVisceraCount = true
@@ -828,5 +828,6 @@ Yet more tiny bits of debris smack into a Triad heavy and four Triad thugs.
   ></trigger>
 
 </triggers>
+
 
 </muclient>

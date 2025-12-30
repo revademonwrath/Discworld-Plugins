@@ -593,3 +593,4 @@ assert (loadstring (GetVariable ("DjinnWin") or "")) ()
 
 
 </muclient>
+

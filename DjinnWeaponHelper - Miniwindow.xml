@@ -21,7 +21,7 @@
 --TODO: colour based on flame.  right-click options
 require "json"
 require "serialize"  -- needed to serialize table to string
-cText = "black"
+cText = "white"
 sTextColour = "limegreen"
 
 function OnPluginInstall()
@@ -590,5 +590,6 @@ assert (loadstring (GetVariable ("DjinnWin") or "")) ()
   </send>
   </timer>
 </timers>
+
 
 </muclient>

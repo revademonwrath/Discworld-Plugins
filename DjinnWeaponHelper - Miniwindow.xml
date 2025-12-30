@@ -1,0 +1,594 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="DjinnMate"
+   author="Reva"
+   id="ef564cbea696bbe5a9c5a322"
+   language="Lua"
+   purpose="Show Duration for Djinn Weapons"
+   date_written="2024-11-07"
+   date_modified="2024-11-15"
+   save_state="y"
+   requires="4.84"
+   version="2.5"
+   >
+</plugin>
+<script>
+<![CDATA[
+--https://pastebin.com/cHcGWVMu
+--TODO: colour based on flame.  right-click options
+require "json"
+require "serialize"  -- needed to serialize table to string
+cText = "black"
+sTextColour = "limegreen"
+
+function OnPluginInstall()
+	DoAfterSpecial (1.5, 'DjinnMateWelcome()', sendto.script)
+	CreateDjinnWin()
+	WindowShow(DjinnWin["name"], true)
+end
+
+function DjinnMateWelcome()
+ColourNote(sTextColour, "",[[
+Thank you for installing DjinnMate v2.0 by Reva
+>< >< >< >< >< >< >< >< >< >< >< >< >< >< >< ><
+Ver. 2 - Miniwindow.
+The plugin will monitor the state of Djinn flame weapons and add time elapsed to the relevant lines.
+The timer will continue if you stop holding the invoked weapon(s), for best results hold and re-invoke again.  The results however will mention it as obviously it can effect them.
+
+The results are recorded, but in this version it is not possible to view them. Hopefully this will be added the future.
+
+For any issues or suggestions please contact me on Spice or Reva, I'm always happy to hear feedback. ;)
+]])
+end
+
+--Set to true to save over installs, will create a long list
+bSaving = false
+if GetVariable("bSaving") == "true" then
+	bSaving = true
+end
+--Number of results to save
+iResults = 1000
+	
+
+--Record start time
+bIsInvoked = false
+iInvokedTimes = 0
+function StartInvokedTimer (sName, sLine, wildcards, styles)
+
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+
+	if bIsInvoked == false then
+		EnableTimer("tic", true)
+		bIsCooldown = false
+		bIsInvoked = true
+		bWasUnheld = false
+		InvokeTime = os.time()
+		iInvokedTimes = 1
+		ColourTell(cText, "", " [")
+		
+		ColourTell(sTextColour, "", "Start time: " .. os.date ("%H:%M:%S"))
+		ColourTell(cText, "", "]")
+	else
+		ExtendedTime = os.time()
+		iInvokedTimes = iInvokedTimes + 1
+		local DisplayElapsedTime = os.difftime (os.time (), InvokeTime)
+		if DisplayElapsedTime == 0 then
+			ColourNote(sText, "", "Failed to capture elapsed time, cancelling.. (" .. os.date ("%I:%M:%S"))
+			return
+		end
+		ColourTell(cText, "", " [")
+		ColourTell(sTextColour, "", "Invoke #" .. iInvokedTimes .. ", current duration: " .. TimeFormat(DisplayElapsedTime))
+		ColourTell(cText, "", "]")
+	end
+	Note("")	
+end
+
+--removed days and hours as should not happen
+function TimeFormat(nNum)
+    iSeconds = nNum
+--	iDay = math.floor(iSeconds / (86400))
+--    iHour = math.floor( (iSeconds - (iDay * 86400))/ 3600)
+	iMinute = math.floor( iSeconds / 60 )
+    iSecond = math.floor( iSeconds - (iMinute * 60) )
+	sString = ""
+	sString = sString .. string.format("%d\:%02d\s", iMinute, iSecond)
+	return sString
+end
+
+InvokedDuration = {}
+CooldownDuration = {}
+FullStats = {}
+if bSaving == true then
+--[[
+	if (GetVariable("InvokedDuration") ~= nil) then
+		TimeRecord = json.decode(GetVariable("InvokedDuration"))
+	end
+	if (GetVariable("CooldownDuration") ~= nil) then
+		TimeRecord = json.decode(GetVariable("CooldownDuration"))
+	end
+]]--
+	if (GetVariable("FullStats") ~= nil) then
+		Fullstats = json.decode(GetVariable("FullStats"))
+	end
+end
+
+
+bIsCooldown = false
+--Record end time after
+function StartCooldownTimer(sName, sLine, wildcards, styles)
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+
+	if bIsInvoked == false then return end
+
+	InvokeEndTime = os.time()
+	bIsInvoked = false
+
+
+	DisplayInvokedDuration = os.difftime (os.time (), InvokeTime)
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", "Invoke (" .. iInvokedTimes .. "x) duration: " .. TimeFormat(DisplayInvokedDuration))
+	if bWasUnheld == true then
+		ColourTell(sTextColour, "", " (Unheld)")
+	end
+	ColourTell(cText, "", "]")
+
+	Note("")
+	
+	bIsCooldown = true
+end
+
+function StatusCooldown()
+	if bIsCooldown ~= true then
+		bIsInvoked = false
+		bIsCooldown = true
+		UpdateDjinnWin()
+	end
+end
+
+function Unheld(sName, sLine, wildcards, styles)
+	if bIsInvoked == false then return end
+	
+	bWasUnheld = true
+	InvokeEndTime = os.time()
+	bIsInvoked = false
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+
+	UnheldTime = os.time()
+
+	DisplayInvokedDuration = os.difftime (os.time (), InvokeTime)
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", "Invoke (" .. iInvokedTimes .. "x) duration: " .. TimeFormat(DisplayInvokedDuration))
+	if bWasUnheld == true then
+		ColourTell(sTextColour, "", " (Unheld)")
+	end
+	ColourTell(cText, "", "]")
+
+	Note("")
+	bIsCooldown = true
+end
+
+bShowComparisons = true
+--Record end time after
+function EndCooldownTimer(sName, sLine, wildcards, styles)
+	for _, v in ipairs (styles) do
+		ColourTell (RGBColourToName (v.textcolour), RGBColourToName (v.backcolour), v.text)
+	end -- for
+
+	if bIsCooldown == false then return end
+
+	EnableTimer("tic", false)
+	CooldownEndTime = os.time()
+
+	--safety for when cooldown was based on logon message
+	bIsCooldown = false
+	bIsInvoked = false
+	if InvokeEndTime == nil then
+		UpdateDjinnWin()
+		return
+	end
+	
+	DisplayCooldownDuration = os.difftime (os.time (), InvokeEndTime)
+
+	ColourTell(cText, "", " [")
+	ColourTell(sTextColour, "", "Invoke (" .. iInvokedTimes .. "x) Cooldown duration: " .. TimeFormat(DisplayCooldownDuration))
+	
+	if bShowComparisons == true then
+		if DisplayInvokedDuration ~= nil then
+			ColourTell(sTextColour, "", " (" .. roundToTenth(TimesOf(DisplayCooldownDuration, DisplayInvokedDuration)) .. "x invoke)")
+		end
+	end
+	
+	ColourTell(cText, "", "]")
+
+	Note("")
+
+	if DisplayInvokedDuration and DisplayCooldownDuration then
+		--Clear up results if there are too many
+		if #FullStats >= iResults then
+			table.remove(FullStats, 1)
+			Note("Removing oldest record as records exceed " .. iResults .. ".")
+		end
+		table.insert(FullStats, {["inv"] = DisplayInvokedDuration, ["cd"] = DisplayCooldownDuration, ["times"] = iInvokedTimes, ["unheld"] = bWasUnheld})
+	else
+		--ColourNote(sTextColour, "", "Results not added as incomplete.")
+	end
+	
+	UpdateDjinnWin()
+end
+
+
+function roundToHundredth(num)
+    return math.floor(num * 100 + 0.5) / 100
+end
+
+function roundToTenth(num)
+    return math.floor(num * 10 + 0.5) / 10
+end
+
+function roundToWhole(num)
+    return math.floor(num + 0.5)
+end
+
+function TimesOf(value1, value2)
+	if value2 == 0 then	-- Avoid division by zero
+		return 0
+	end	
+	
+	return value1/value2
+end
+
+function percentOf(value, total)
+    if total == 0 then
+        return 0  -- Avoid division by zero
+    end
+    return (value / total) * 100
+end
+
+function percentOfTotal(part1, part2)
+    local total = part1 + part2
+    if total == 0 then
+        return 0, 0  -- Avoid division by zero if both parts are zero
+    end
+    local percent1 = (part1 / total) * 100
+    local percent2 = (part2 / total) * 100
+    return percent1, percent2
+end
+
+function OnPluginSaveState ()
+	if bSaving == true then
+		--SetVariable("InvokedDuration", json.encode(InvokedDuration))
+		--SetVariable("CooldownDuration", json.encode(CooldownDuration))
+		SetVariable("FullStats", json.encode(FullStats))
+	end
+	SetVariable("bSaving", tostring(bSaving))
+	DjinnWin["pos_x"] = WindowInfo (DjinnWin["name"], 10)
+	DjinnWin["pos_y"] = WindowInfo (DjinnWin["name"], 11)
+	SetVariable ("DjinnWin", "DjinnWin = " .. serialize.save_simple (DjinnWin))	
+end
+
+--------------------------------------------------------------------------------
+--   START MINIWINDOW STUFF
+--------------------------------------------------------------------------------
+function OnPluginDisable()
+	WindowShow (DjinnWin["name"], false)
+end
+
+function OnPluginClose ()
+	WindowShow (DjinnWin["name"], false)
+end
+
+function GetStatusColour(sStatus)
+	if sStatus == "cooldown" then
+		cReturnColour = "deepskyblue"
+	elseif sStatus == "invoked" then
+		cReturnColour = "yellowgreen"
+	else
+		cReturnColour = DjinnWin["colour"]["text2"]
+	end
+	return cReturnColour
+end
+
+function GetStatus()
+	if bIsCooldown == true then
+		return "cooldown"
+	elseif bIsInvoked == true then
+		return "invoked"
+	else
+		return "ready"
+	end
+end
+
+function UpdateDjinnWin()
+	if 	DjinnWin["dragging"] == true then
+		return
+	end
+
+	WindowRectOp (DjinnWin["name"], 2, 0, 0, DjinnWin["width"], DjinnWin["height"], ColourNameToRGB(DjinnWin["colour"]["back"]))-- clears the window so old frame doesn't show
+	WindowRectOp (DjinnWin["name"], 4, 0, 0, DjinnWin["width"], DjinnWin["height"], ColourNameToRGB(DjinnWin["colour"]["border2"]), ColourNameToRGB(DjinnWin["colour"]["border1"]))
+
+	local iLeftIndent = DjinnWin["padding"]
+	WindowText (DjinnWin["name"], "f", DjinnWin["text_status"], iLeftIndent, DjinnWin["padding"], 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text1"]), false) -- not Unicode
+
+	local iColonIndent = DjinnWin["padding"] + WindowTextWidth(DjinnWin["name"], "f", DjinnWin["text_status"])
+	WindowText (DjinnWin["name"], "f", ":", iColonIndent, DjinnWin["padding"], 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text2"]), false) -- not Unicode
+
+	local sStatus = GetStatus()
+	local sFont = "f"
+	local iRightIndent = DjinnWin["width"] - DjinnWin["padding"] - WindowTextWidth(DjinnWin["name"], sFont, sStatus)
+	local cStatusColour = GetStatusColour(sStatus)
+	WindowText (DjinnWin["name"], sFont, sStatus, iRightIndent, DjinnWin["padding"], 0, 0,	ColourNameToRGB(cStatusColour), false) -- not Unicode
+
+
+	local iLine = 1
+
+	local iLeftIndent = DjinnWin["padding"]
+	local sText = DjinnWin["text_inv_duration"]
+	if iInvokedTimes > 1 then
+		sText = "Inv(" .. tostring(iInvokedTimes) .. ")"
+	end
+	WindowText (DjinnWin["name"], "f", sText, iLeftIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * iLine), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text1"]), false) -- not Unicode
+
+	local iColonIndent = DjinnWin["padding"] + WindowTextWidth(DjinnWin["name"], sFont, sText)
+
+
+	
+
+	WindowText (DjinnWin["name"], "f", ":", iColonIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * iLine), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text2"]), false) -- not Unicode
+
+	local sFont = "f"
+	if bWasUnheld == true then
+		sFont = "f2"
+	end
+	local sText = "--:--s"
+	local iInvokePercentIndent = iColonIndent + WindowTextWidth(DjinnWin["name"], sFont, ": ")
+	if iInvokedTimes > 1 then
+		iInvokePercentIndent = iColonIndent + WindowTextWidth(DjinnWin["name"], sFont, ":")
+	end
+	
+	if bIsInvoked == true then
+		sText = TimeFormat(os.difftime (os.time (), InvokeTime))
+	elseif DisplayInvokedDuration then
+		sText = TimeFormat(DisplayInvokedDuration)
+
+		if DisplayCooldownDuration then
+			iInvokePercent, iCooldownPercent = percentOfTotal(DisplayInvokedDuration, DisplayCooldownDuration)
+			
+			if bShowComparisons == true and bIsInvoked == false and bIsCooldown == false then
+				--local iInvokePercentIndent = iColonIndent + WindowTextWidth(DjinnWin["name"], sFont, ": ")
+				local sPercentText = roundToWhole(iInvokePercent)
+				if iInvokedTimes == 1 then
+					sPercentText = sPercentText.."%"
+				end
+				WindowText (DjinnWin["name"], "f", sPercentText, iInvokePercentIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * iLine), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text2"]), false) -- not Unicode
+			end
+
+		end
+
+	end
+	local iRightIndent = DjinnWin["width"] - DjinnWin["padding"] - WindowTextWidth(DjinnWin["name"], sFont, sText)
+	WindowText (DjinnWin["name"], sFont, sText, iRightIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * (iLine)), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text1"]), false) -- not Unicode
+	iLine = iLine + 1
+
+	local iLeftIndent = DjinnWin["padding"]
+	WindowText (DjinnWin["name"], "f", DjinnWin["text_cd_duration"], iLeftIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * iLine), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text1"]), false) -- not Unicode
+	local iColonIndent = DjinnWin["padding"] + WindowTextWidth(DjinnWin["name"], sFont, DjinnWin["text_cd_duration"])
+	WindowText (DjinnWin["name"], "f", ":", iColonIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * iLine), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text2"]), false) -- not Unicode
+
+	
+	local sFont = "f"
+	local sText = "--:--s"
+	if bIsCooldown == true and InvokeEndTime ~= nil then
+		sText = TimeFormat(os.difftime (os.time (), InvokeEndTime))
+	elseif DisplayCooldownDuration then
+		sText = TimeFormat(DisplayCooldownDuration)
+
+		if bShowComparisons == true  and bIsInvoked == false and bIsCooldown == false then
+			local sPercentText = roundToWhole(iCooldownPercent)
+			if iInvokedTimes == 1 then
+				sPercentText = sPercentText.."%"
+			end
+
+			--local iDurationPerecentIndent = iColonIndent + WindowTextWidth(DjinnWin["name"], sFont, ":  ")
+			WindowText (DjinnWin["name"], "f", sPercentText, iInvokePercentIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * iLine), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text2"]), false) -- not Unicode
+		
+		end
+
+	end
+	local iRightIndent = DjinnWin["width"] - DjinnWin["padding"] - WindowTextWidth(DjinnWin["name"], sFont, sText)
+	WindowText (DjinnWin["name"], sFont, sText, iRightIndent, DjinnWin["padding"] + (DjinnWin["font_height"] * (iLine)), 0, 0,	ColourNameToRGB(DjinnWin["colour"]["text1"]), false) -- not Unicode
+
+
+	WindowDeleteHotspot (DjinnWin["name"], "whole")
+	
+	WindowAddHotspot(DjinnWin["name"], "whole", DjinnWin["padding"], DjinnWin["padding"], DjinnWin["width"] - DjinnWin["padding"],DjinnWin["height"] - DjinnWin["padding"],   --rectangle
+				 "",   -- MouseOver
+				 "",   -- CancelMouseOver
+				 "DjinnWinMouseDown",
+				 "", 
+				 "",  --mouse up, removed 
+				 "Click to drag",  -- tooltip text
+				 10, 0)  -- hand cursor
+	WindowDragHandler(DjinnWin["name"], "whole", "DjinnWinDragMove", "DjinnWinDragRelease", 0) 
+
+	Redraw()
+end
+
+function ResizeDjinnWin()
+	DjinnWin["font_height"] = WindowFontInfo(DjinnWin["name"], "f", 1)
+	--Note("fh = " .. tostring(DjinnWin["font_height"]))
+
+	DjinnWin["height"] = DjinnWin["font_height"] + (DjinnWin["padding"] * 2)
+
+	local sLongestText = DjinnWin["text_status"]..":cooldown"
+	DjinnWin["width"] = WindowTextWidth (DjinnWin["name"], "f", sLongestText) + (DjinnWin["padding"] * 2)
+
+	WindowResize(DjinnWin["name"], DjinnWin["width"], DjinnWin["height"], ColourNameToRGB(DjinnWin["colour"]["back"]))
+end
+
+--------------------------------------------------------------------------------
+--   DRAG AND HOTSPOT HANDLERS
+--------------------------------------------------------------------------------
+function DjinnWinMouseDown(flags, hotspot_id)
+	if hotspot_id == "whole" then
+		startx, starty = WindowInfo (DjinnWin["name"], 14), WindowInfo (DjinnWin["name"], 15)
+	end
+end -- mousedown
+
+function DjinnWinDragMove(flags, hotspot_id)
+	DjinnWin["dragging"] = true
+	if hotspot_id == "whole" then
+		local posx, posy = WindowInfo (DjinnWin["name"], 17), WindowInfo (DjinnWin["name"], 18)
+		-- move the window to the new location
+		WindowPosition(DjinnWin["name"], posx - startx, posy - starty, 0, 2)
+  
+		-- change the mouse cursor shape appropriately
+		if posx < 0 or posx > GetInfo (281) or posy < 0 or posy > GetInfo (280) then
+			check (SetCursor ( 11))   -- X cursor
+		else
+			check (SetCursor ( 1))   -- hand cursor
+		end -- if
+	end
+end -- DjinnWinDragMove
+
+function DjinnWinDragRelease(flags, hotspot_id)
+	--DebugNote("No longer dragging")
+	DjinnWin["dragging"] = false
+	
+	DjinnWin["pos_x"] = WindowInfo (DjinnWin["name"], 10)
+	DjinnWin["pos_y"] = WindowInfo (DjinnWin["name"], 11)
+	UpdateDjinnWin()
+end -- DjinnWinDragRelease
+
+function CreateDjinnWin()
+	WindowCreate (DjinnWin["name"], 0, 0, 0, 0, miniwin.pos_center_all, 0, ColourNameToRGB(DjinnWin["colour"]["back"])) -- we must load the window before we can load fonts
+	WindowFont (DjinnWin["name"], "f", DjinnWin["font"], DjinnWin["font_size"], false, false, false, false)
+	WindowFont (DjinnWin["name"], "f2", DjinnWin["font"], DjinnWin["font_size"], false, false, false, true)
+	DjinnWin["font_height"] = WindowFontInfo (DjinnWin["name"], "f", 1)
+
+	local sLongestText = DjinnWin["text_status"]..":cooldown"
+	DjinnWin["height"] = (DjinnWin["font_height"]*3) + (DjinnWin["padding"] * 2)
+	DjinnWin["width"] = WindowTextWidth (DjinnWin["name"], "f", sLongestText) + (DjinnWin["padding"] * 2)
+
+	WindowResize(DjinnWin["name"], DjinnWin["width"], DjinnWin["height"], ColourNameToRGB(DjinnWin["colour"]["back"]))
+
+	--Note("x = " .. tostring(DjinnWin["pos_x"]).. "|y = " .. tostring(DjinnWin["pos_y"]))
+	if DjinnWin["pos_x"] ~= nil and DjinnWin["pos_x"] ~= nil then
+		WindowPosition(DjinnWin["name"], DjinnWin["pos_x"], DjinnWin["pos_y"], miniwin.pos_center_all, 2)
+	else
+		WindowPosition(DjinnWin["name"], 0, 0, miniwin.pos_center_all, 2)
+	end
+	
+	UpdateDjinnWin()
+	WindowShow(DjinnWin["name"], true)
+	WindowSetZOrder(DjinnWin["name"], 2001)
+end
+
+DjinnWin = {
+["name"] = "djinnwin" .. GetPluginID (),
+["font"] = "Consolas",
+["font_size"] = 9,
+["padding"] = 2.5,
+["text_status"] = "Status",
+["text_inv_duration"] = "Inv",
+["text_cd_duration"] = "CD",
+["colour"] = {
+	["text1"] = "greenyellow",
+	["text2"] = "white",
+	["border1"] = "yellowgreen",
+	["border2"] = "chartreuse",
+	["back"] = "black",
+	},
+["display"] = true, 
+}
+assert (loadstring (GetVariable ("DjinnWin") or "")) ()
+
+
+]]>
+</script> 
+<!--  Aliases  -->
+<aliases>
+</aliases>
+<!--  Triggers  -->
+
+<triggers> 
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^You invoke (?:\w+) gold-veined .+, leaving you a little drained as a result\.$"
+   sequence="12"
+   omit_from_output="y"
+   script="StartInvokedTimer"
+   name="Invoke"
+  ></trigger>
+  
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:You are still feeling a little drained as a result of invoking a djinn weapon recently|You still feel drained from the exertion of a previous invocation.  You will have to wait a little while before you can try again)\.$"
+   sequence="12"
+   script="StatusCooldown"
+   name="CooldownMessages"
+  ></trigger>
+
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?The crackling flames around the gold-veined .+ die down\.$"
+   sequence="12"
+   omit_from_output="y"
+   script="StartCooldownTimer"
+   name="EndInvoke"
+  ></trigger>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?You feel you have regained enough strength to invoke a flame weapon again\.$"
+   sequence="12"
+   omit_from_output="y"
+   script="EndCooldownTimer"
+   name="EndCooldown"
+  ></trigger>
+  
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   regexp="y"
+   match="^(?:> )?Without the gold-veined (?P<type>\w+) in your hands, your connection is too weak and the flames around it die out\.$"
+   sequence="12"
+   omit_from_output="y"
+   script="Unheld"
+   name="Uheld"
+  ></trigger>
+
+  
+</triggers>
+<timers>
+  <timer 
+	name="tic" 
+	enabled="n" 
+	minute="0" 
+	second="1.00" 
+	offset_second="0.00" 
+	send_to="12"
+	active_closed="y"	
+  >
+  <send>  
+	UpdateDjinnWin()
+  </send>
+  </timer>
+</timers>
+
+</muclient>

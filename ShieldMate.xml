@@ -2049,7 +2049,7 @@ In blocking the attack the black iron shield floating around Deramius is knocked
   <trigger
    enabled="y"
    keep_evaluating="y"
-   match="^\[?(?!.*(?:specialized|birthday|Discworld|achievement|first time|killed by|gains a level|Cpu|Machine|Reclaimed|Cleaning|joined the|now worshipping|now a member of|.+\] \w+).*).*[a-zA-Z]+.*(?:\]| \[.+\]\.)$"
+   match="^(?!.*(?:specialized|birthday|Discworld|achievement|first time|killed by|gains a level|Cpu|Machine|Reclaimed|Cleaning|joined the|now worshipping|now a member of))\[.+\]$|^.+ \[.+\]\.$"
    regexp="y"
    sequence="12"
    script="CurrentRoom"
@@ -2451,3 +2451,4 @@ In blocking the attack the black iron shield floating around Deramius is knocked
   </timers>
   
 </muclient>	
+

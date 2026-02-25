@@ -373,9 +373,8 @@ DebugNote(sName)
 		HandleTalkingMessages(sUsePlayerName, sShieldType, bStatus)
 	end
 	
-	--if this is EFF lets record floater location, skipping NPCs.
-	if sShieldType == "EFF" then
-		
+	--if this is EFF (and a knockdown) lets record floater location, skipping NPCs.
+	if sShieldType == "EFF" and bStatus == false then
 		for k, v in pairs (NPCList) do
 			if string.match(sUsePlayerName, v .. "$") then
 				DebugNote("Skipping NPC: ".. v .. ".")
@@ -2451,4 +2450,5 @@ In blocking the attack the black iron shield floating around Deramius is knocked
   </timers>
   
 </muclient>	
+
 
